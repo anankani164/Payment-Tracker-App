@@ -1,16 +1,41 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { downloadCSV, downloadPDF } from '../utils/export';
+
 export default function Invoices(){
   const [invoices, setInvoices] = useState([]);
   const [clients, setClients] = useState([]);
   const [show, setShow] = useState(false);
   const [form, setForm] = useState({client_id:'', total:'', title:'', description:'', due_date:''});
+
+  // Filters
+  const [params, setParams] = useSearchParams();
+  const [filters, setFilters] = useState({
+    status: params.get('status') || '',
+    client_id: params.get('client_id') || '',
+    overdue: params.get('overdue') === 'true',
+    from: params.get('from') || '',
+    to: params.get('to') || '',
+    q: params.get('q') || ''
+  });
+
+  function applyFilters(newFilters = filters){
+    const sp = new URLSearchParams();
+    Object.entries(newFilters).forEach(([k,v])=>{
+      if (k==='overdue') { if (v) sp.set('overdue','true'); }
+      else if (v) sp.set(k, v);
+    });
+    setParams(sp, { replace:true });
+  }
+
   async function load(){
-    setInvoices(await (await fetch('/api/invoices')).json());
+    const qs = params.toString();
+    const url = '/api/invoices' + (qs ? `?${qs}` : '');
+    setInvoices(await (await fetch(url)).json());
     setClients(await (await fetch('/api/clients')).json());
   }
-  useEffect(()=>{ load(); },[]);
+  useEffect(()=>{ load(); },[params]);
+
   async function add(){
     const body = {...form, client_id:Number(form.client_id), total:Number(form.total)};
     if(!body.client_id || !(body.total>0)) return alert('Select client and amount > 0');
@@ -18,17 +43,53 @@ export default function Invoices(){
     if(!r.ok) return alert('Failed to add invoice');
     setShow(false); setForm({client_id:'', total:'', title:'', description:'', due_date:''}); load();
   }
+
+  async function markPaid(id){
+    const r = await fetch(`/api/invoices/${id}/mark-paid`, {method:'POST'});
+    if(!r.ok) return alert('Failed to mark as paid');
+    load();
+  }
+
   return (
     <div>
       <h1 className="page-title">Invoices</h1>
+
+      {/* Filters */}
+      <div className="card" style={{marginBottom:12}}>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(6,minmax(0,1fr))', gap:8}}>
+          <select value={filters.status} onChange={e=>setFilters({...filters, status:e.target.value})}>
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="part-paid">Part-paid</option>
+            <option value="paid">Paid</option>
+          </select>
+          <select value={filters.client_id} onChange={e=>setFilters({...filters, client_id:e.target.value})}>
+            <option value="">All clients</option>
+            {clients.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <input type="date" value={filters.from} onChange={e=>setFilters({...filters, from:e.target.value})} />
+          <input type="date" value={filters.to} onChange={e=>setFilters({...filters, to:e.target.value})} />
+          <input placeholder="Search…" value={filters.q} onChange={e=>setFilters({...filters, q:e.target.value})} />
+          <label style={{display:'flex', alignItems:'center', gap:6}}>
+            <input type="checkbox" checked={filters.overdue} onChange={e=>setFilters({...filters, overdue:e.target.checked})} />
+            Overdue
+          </label>
+        </div>
+        <div style={{display:'flex', gap:8, marginTop:10}}>
+          <button className="btn" onClick={()=>applyFilters()}>Apply</button>
+          <button className="btn secondary" onClick={()=>{ setFilters({status:'',client_id:'',overdue:false,from:'',to:'',q:''}); applyFilters({}); }}>Reset</button>
+        </div>
+      </div>
+
       <div style={{display:'flex',gap:8, marginBottom:12}}>
         <button className="btn" onClick={()=>setShow(true)}>Add Invoice</button>
         <button className="btn secondary" onClick={()=>downloadCSV('invoices.csv', invoices)}>Export CSV</button>
         <button className="btn secondary" onClick={()=>downloadPDF('Invoices', invoices)}>Export PDF</button>
       </div>
+
       <div className="card">
         <table>
-          <thead><tr><th>#</th><th>Client</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Due</th><th></th></tr></thead>
+          <thead><tr><th>#</th><th>Client</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Due</th><th>Actions</th></tr></thead>
           <tbody>
             {invoices.map(inv=> (
               <tr key={inv.id}>
@@ -37,15 +98,19 @@ export default function Invoices(){
                 <td>{Number(inv.total).toFixed(2)}</td>
                 <td>{Number(inv.amount_paid||0).toFixed(2)}</td>
                 <td>{Number(inv.balance||0).toFixed(2)}</td>
-                <td><span className={`status ${inv.status==='part-paid'?'partial':inv.status}`}>{inv.status}</span></td>
+                <td><span className={`status ${inv.status==='part-paid'?'partial':inv.status}`}>{inv.status}{inv.overdue?' • Overdue':''}</span></td>
                 <td>{inv.due_date||''}</td>
-                <td><Link to={`/invoices/${inv.id}`}>View</Link></td>
+                <td style={{display:'flex', gap:8}}>
+                  <Link to={`/invoices/${inv.id}`}>View</Link>
+                  {inv.status!=='paid' && <button className="btn secondary" onClick={()=>markPaid(inv.id)}>Mark paid</button>}
+                </td>
               </tr>
             ))}
-            {invoices.length===0 && <tr><td colSpan={8} className="muted">No invoices yet</td></tr>}
+            {invoices.length===0 && <tr><td colSpan={8} className="muted">No invoices found</td></tr>}
           </tbody>
         </table>
       </div>
+
       {show && (
         <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center'}}>
           <div className="card" style={{width:'100%', maxWidth:520}}>
