@@ -1,60 +1,50 @@
-import React, { useEffect, useState } from 'react'
-import api from '../api'
-
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 export default function Dashboard(){
-  const [stats, setStats] = useState(null)
-
-  useEffect(() => {
-    api.get('/api/stats').then(res => setStats(res.data))
-  }, [])
-
-  if (!stats) return <p>Loading...</p>
-
+  const [stats, setStats] = useState({ totalOutstanding:0, totalReceived:0, overdueInvoices:0, paymentsThisMonth:0 });
+  const [clients, setClients] = useState([]);
+  const [payments, setPayments] = useState([]);
+  useEffect(()=>{ (async ()=>{
+    const s = await (await fetch('/api/stats')).json(); setStats(s);
+    const c = await (await fetch('/api/clients')).json(); setClients(c);
+    const p = await (await fetch('/api/payments')).json(); setPayments(p.slice(0,8));
+  })(); },[]);
   return (
-    <div className="grid grid-3">
-      <div className="card">
-        <div className="page-title">Overview</div>
-        <p><b>{stats.clients}</b> clients</p>
-        <p><b>{stats.invoices}</b> invoices</p>
-        <p>Total Amount: <b>GHS {stats.total_amount.toFixed(2)}</b></p>
-        <p>Collected: <b className="muted">GHS {stats.total_paid.toFixed(2)}</b></p>
-        <p>Outstanding: <b style={{color:'#ffd36a'}}>GHS {stats.outstanding.toFixed(2)}</b></p>
+    <div>
+      <h1 className="page-title">Dashboard</h1>
+      <div className="grid grid-4">
+        <div className="card"><div className="muted">Total Outstanding</div><div style={{fontSize:24,fontWeight:700}}>GHS {stats.totalOutstanding.toFixed(2)}</div></div>
+        <div className="card"><div className="muted">Total Received</div><div style={{fontSize:24,fontWeight:700}}>GHS {stats.totalReceived.toFixed(2)}</div></div>
+        <div className="card"><div className="muted">Overdue Invoices</div><div style={{fontSize:24,fontWeight:700}}>{stats.overdueInvoices}</div></div>
+        <div className="card"><div className="muted">Payments This Month</div><div style={{fontSize:24,fontWeight:700}}>GHS {stats.paymentsThisMonth.toFixed(2)}</div></div>
       </div>
-      <div className="card">
-        <div className="page-title">Pending Invoices</div>
-        <table>
-          <thead>
-            <tr><th>Title</th><th>Due</th><th>Status</th><th>Balance</th></tr>
-          </thead>
-          <tbody>
-            {stats.pendingInvoices.map(inv => (
-              <tr key={inv.invoice_id}>
-                <td><a href={`/invoices/${inv.invoice_id}`}>{inv.title}</a></td>
-                <td>{inv.due_date || '—'}</td>
-                <td><span className={`status ${inv.status}`}>{inv.status}</span></td>
-                <td>GHS {inv.balance.toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="card">
-        <div className="page-title">Recent Payments</div>
-        <table>
-          <thead>
-            <tr><th>Date</th><th>Invoice</th><th>Amount</th><th>Method</th></tr>
-          </thead>
-          <tbody>
-            {stats.recentPayments.map(p => (
-              <tr key={p.id}>
-                <td>{p.paid_at}</td>
-                <td><a href={`/invoices/${p.invoice_id}`}>#{p.invoice_id}</a></td>
-                <td>GHS {Number(p.amount).toFixed(2)}</td>
-                <td>{p.method || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="grid" style={{marginTop:16}}>
+        <div className="card">
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <h3 style={{margin:0}}>Clients</h3>
+            <Link to="/clients" className="btn secondary" style={{padding:'6px 10px'}}>View all</Link>
+          </div>
+          <table>
+            <thead><tr><th>Name</th><th>Email</th><th>Phone</th></tr></thead>
+            <tbody>
+              {clients.slice(0,8).map(c=> (<tr key={c.id}><td>{c.name}</td><td>{c.email||''}</td><td>{c.phone||''}</td></tr>))}
+              {clients.length===0 && <tr><td colSpan={3} className="muted">No clients yet</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <div className="card">
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <h3 style={{margin:0}}>Recent Payments</h3>
+            <Link to="/invoices" className="btn secondary" style={{padding:'6px 10px'}}>Invoices</Link>
+          </div>
+          <table>
+            <thead><tr><th>Date</th><th>Amount</th><th>Percent</th><th>Note</th></tr></thead>
+            <tbody>
+              {payments.map(p=> (<tr key={p.id}><td>{new Date(p.created_at).toLocaleString()}</td><td>{Number(p.amount).toFixed(2)}</td><td>{p.percent??''}</td><td>{p.note??''}</td></tr>))}
+              {payments.length===0 && <tr><td colSpan={4} className="muted">No payments yet</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

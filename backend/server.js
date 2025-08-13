@@ -1,191 +1,97 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import db from './db.js';
 
 dotenv.config();
-
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 4000;
+const run = (sql, params=[]) => db.prepare(sql).run(...(Array.isArray(params)?[params]:[params]));
+const get = (sql, params=[]) => db.prepare(sql).get(...(Array.isArray(params)?[params]:[params]));
+const all = (sql, params=[]) => db.prepare(sql).all(...(Array.isArray(params)?[params]:[params]));
 
-// Utilities
-const run = (sql, params=[]) => db.prepare(sql).run(params);
-const get = (sql, params=[]) => db.prepare(sql).get(params);
-const all = (sql, params=[]) => db.prepare(sql).all(params);
+app.get('/api/health', (req,res)=> res.json({ok:true, service:'payment-tracker-backend'}));
 
-// -------- Clients --------
-app.get('/api/clients', (req, res) => {
+app.get('/api/clients', (req,res)=> {
   const rows = all('SELECT * FROM clients ORDER BY created_at DESC');
   res.json(rows);
 });
-
-app.post('/api/clients', (req, res) => {
-  const { name, email, phone, company, notes } = req.body;
-  if (!name) return res.status(400).json({ error: 'Name is required' });
-  const info = run(
-    `INSERT INTO clients (name, email, phone, company, notes) VALUES (?, ?, ?, ?, ?)`,
-    [name, email, phone, company, notes]
-  );
+app.post('/api/clients', (req,res)=> {
+  const { name, email=null, phone=null, company=null, notes=null } = req.body||{};
+  if(!name) return res.status(400).json({error:'name required'});
+  const info = run('INSERT INTO clients (name,email,phone,company,notes) VALUES (?,?,?,?,?)',[name,email,phone,company,notes]);
   const row = get('SELECT * FROM clients WHERE id = ?', [info.lastInsertRowid]);
-  res.status(201).json(row);
-});
-
-app.get('/api/clients/:id', (req, res) => {
-  const client = get('SELECT * FROM clients WHERE id = ?', [req.params.id]);
-  if (!client) return res.status(404).json({ error: 'Not found' });
-  const invoices = all('SELECT * FROM invoice_summary WHERE client_id = ? ORDER BY created_at DESC', [req.params.id]);
-  res.json({ client, invoices });
-});
-
-app.put('/api/clients/:id', (req, res) => {
-  const { name, email, phone, company, notes } = req.body;
-  const existing = get('SELECT * FROM clients WHERE id = ?', [req.params.id]);
-  if (!existing) return res.status(404).json({ error: 'Not found' });
-  run(
-    `UPDATE clients SET name=?, email=?, phone=?, company=?, notes=? WHERE id = ?`,
-    [
-      name ?? existing.name,
-      email ?? existing.email,
-      phone ?? existing.phone,
-      company ?? existing.company,
-      notes ?? existing.notes,
-      req.params.id
-    ]
-  );
-  const row = get('SELECT * FROM clients WHERE id = ?', [req.params.id]);
   res.json(row);
 });
 
-app.delete('/api/clients/:id', (req, res) => {
-  run('DELETE FROM clients WHERE id = ?', [req.params.id]);
-  res.json({ ok: true });
+app.get('/api/invoices', (req,res)=> {
+  const rows = all(`SELECT i.*, c.id as c_id, c.name as c_name, c.email as c_email, c.phone as c_phone
+                    FROM invoices i LEFT JOIN clients c ON c.id = i.client_id
+                    ORDER BY i.created_at DESC`);
+  const mapped = rows.map(r=> ({
+    id: r.id, client_id: r.client_id, title: r.title, description: r.description,
+    total: r.total, status: r.status, amount_paid: r.amount_paid, due_date: r.due_date, created_at: r.created_at,
+    client: { id: r.c_id, name: r.c_name, email: r.c_email, phone: r.c_phone },
+    balance: Number(r.total) - Number(r.amount_paid||0)
+  }));
+  res.json(mapped);
 });
-
-// -------- Invoices --------
-app.get('/api/invoices', (req, res) => {
-  const rows = all('SELECT * FROM invoice_summary ORDER BY created_at DESC');
-  res.json(rows);
-});
-
-app.post('/api/invoices', (req, res) => {
-  const { client_id, title, description, amount, due_date } = req.body;
-  if (!client_id || !title || !amount) {
-    return res.status(400).json({ error: 'client_id, title and amount are required' });
-  }
-  const info = run(
-    `INSERT INTO invoices (client_id, title, description, amount, due_date) VALUES (?, ?, ?, ?, ?)`,
-    [client_id, title, description, amount, due_date]
-  );
-  const row = get('SELECT * FROM invoice_summary WHERE invoice_id = ?', [info.lastInsertRowid]);
-  res.status(201).json(row);
-});
-
-app.get('/api/invoices/:id', (req, res) => {
-  const invoice = get('SELECT * FROM invoice_summary WHERE invoice_id = ?', [req.params.id]);
-  if (!invoice) return res.status(404).json({ error: 'Not found' });
-  const client = get('SELECT * FROM clients WHERE id = ?', [invoice.client_id]);
-  const payments = all('SELECT * FROM payments WHERE invoice_id = ? ORDER BY paid_at DESC, created_at DESC', [req.params.id]);
-  res.json({ invoice, client, payments });
-});
-
-app.put('/api/invoices/:id', (req, res) => {
-  const existing = get('SELECT * FROM invoices WHERE id = ?', [req.params.id]);
-  if (!existing) return res.status(404).json({ error: 'Not found' });
-  const { title, description, amount, due_date, client_id } = req.body;
-  run(
-    `UPDATE invoices SET client_id=?, title=?, description=?, amount=?, due_date=? WHERE id = ?`,
-    [
-      client_id ?? existing.client_id,
-      title ?? existing.title,
-      description ?? existing.description,
-      amount ?? existing.amount,
-      due_date ?? existing.due_date,
-      req.params.id
-    ]
-  );
-  const row = get('SELECT * FROM invoice_summary WHERE invoice_id = ?', [req.params.id]);
-  res.json(row);
-});
-
-app.delete('/api/invoices/:id', (req, res) => {
-  run('DELETE FROM invoices WHERE id = ?', [req.params.id]);
-  res.json({ ok: true });
-});
-
-// -------- Payments --------
-app.get('/api/payments', (req, res) => {
-  const rows = all('SELECT * FROM payments ORDER BY paid_at DESC, created_at DESC');
-  res.json(rows);
-});
-
-app.get('/api/invoices/:id/payments', (req, res) => {
-  const rows = all('SELECT * FROM payments WHERE invoice_id = ? ORDER BY paid_at DESC, created_at DESC', [req.params.id]);
-  res.json(rows);
-});
-
-app.post('/api/invoices/:id/payments', (req, res) => {
-  const { amount, paid_at, method, notes } = req.body;
-  if (!amount) return res.status(400).json({ error: 'amount is required' });
+app.get('/api/invoices/:id', (req,res)=> {
   const inv = get('SELECT * FROM invoices WHERE id = ?', [req.params.id]);
-  if (!inv) return res.status(404).json({ error: 'Invoice not found' });
-  const info = run(
-    `INSERT INTO payments (invoice_id, amount, paid_at, method, notes) VALUES (?, ?, ?, ?, ?)`,
-    [req.params.id, amount, paid_at, method, notes]
-  );
+  if(!inv) return res.status(404).json({error:'not found'});
+  const client = get('SELECT * FROM clients WHERE id = ?', [inv.client_id]);
+  const pays = all('SELECT * FROM payments WHERE invoice_id = ? ORDER BY created_at DESC', [inv.id]);
+  res.json({ ...inv, client, payments: pays });
+});
+app.post('/api/invoices', (req,res)=> {
+  const { client_id, total, title=null, description=null, due_date=null } = req.body||{};
+  if(!client_id || !(total>0)) return res.status(400).json({error:'client_id and total required'});
+  const info = run('INSERT INTO invoices (client_id,total,title,description,due_date) VALUES (?,?,?,?,?)',[client_id,total,title,description,due_date]);
+  const row = get('SELECT * FROM invoices WHERE id = ?', [info.lastInsertRowid]);
+  res.json(row);
+});
+
+app.get('/api/payments', (req,res)=> {
+  const { invoice_id } = req.query;
+  if(invoice_id){
+    const rows = all('SELECT * FROM payments WHERE invoice_id = ? ORDER BY created_at DESC',[invoice_id]);
+    return res.json(rows);
+  }
+  const rows = all('SELECT * FROM payments ORDER BY created_at DESC');
+  res.json(rows);
+});
+app.post('/api/payments', (req,res)=> {
+  const { invoice_id, amount, percent, method=null, note=null } = req.body||{};
+  if(!invoice_id) return res.status(400).json({error:'invoice_id required'});
+  const inv = get('SELECT id,total,COALESCE(amount_paid,0) AS amount_paid FROM invoices WHERE id = ?', [invoice_id]);
+  if(!inv) return res.status(404).json({error:'invoice not found'});
+  const payAmount = (percent!=null) ? (Number(inv.total)*(Number(percent)/100)) : Number(amount||0);
+  if(!(payAmount>0)) return res.status(400).json({error:'amount or percent > 0 required'});
+  const info = run('INSERT INTO payments (invoice_id,amount,percent,method,note) VALUES (?,?,?,?,?)',[invoice_id,payAmount,percent??null,method,note]);
+
+  const newPaid = Number(inv.amount_paid)+payAmount;
+  const newStatus = (newPaid + 0.0001 >= Number(inv.total)) ? 'paid' : 'part-paid';
+  run('UPDATE invoices SET amount_paid=?, status=? WHERE id=?', [newPaid, newStatus, invoice_id]);
+
   const row = get('SELECT * FROM payments WHERE id = ?', [info.lastInsertRowid]);
-  res.status(201).json(row);
+  res.json(row);
 });
 
-// -------- Stats & Export --------
-app.get('/api/stats', (req, res) => {
-  const totals = get('SELECT COUNT(*) as clients FROM clients');
-  const invAgg = get('SELECT COUNT(*) as invoices, IFNULL(SUM(invoice_amount),0) as total_amount, IFNULL(SUM(total_paid),0) as total_paid FROM invoice_summary');
-  const outstanding = invAgg.total_amount - invAgg.total_paid;
-  const recentPayments = all('SELECT * FROM payments ORDER BY paid_at DESC, created_at DESC LIMIT 10');
-  // IMPORTANT: use single quotes so SQLite treats 'paid' as a string, not an identifier.
-  const pendingInvoices = all("SELECT * FROM invoice_summary WHERE status != 'paid' ORDER BY (due_date IS NULL) ASC, due_date ASC, created_at DESC LIMIT 10");
-  res.json({
-    clients: totals.clients,
-    invoices: invAgg.invoices,
-    total_amount: invAgg.total_amount,
-    total_paid: invAgg.total_paid,
-    outstanding,
-    recentPayments,
-    pendingInvoices
-  });
+app.get('/api/stats', (req,res)=> {
+  const totals = get('SELECT COALESCE(SUM(total),0) AS total, COALESCE(SUM(amount_paid),0) AS paid FROM invoices', []);
+  const outstanding = Number(totals.total) - Number(totals.paid);
+  const received = Number(totals.paid);
+  const overdue = get("SELECT COUNT(*) AS n FROM invoices WHERE status != 'paid' AND due_date IS NOT NULL AND date(due_date) < date('now')", []);
+  const pays = all('SELECT amount, created_at FROM payments', []);
+  const now = new Date();
+  const paymentsThisMonth = pays.filter(p=> {
+    const d = new Date(p.created_at);
+    return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear();
+  }).reduce((s,p)=> s+Number(p.amount||0), 0);
+  res.json({ totalOutstanding: outstanding, totalReceived: received, overdueInvoices: overdue.n, paymentsThisMonth });
 });
 
-app.get('/api/export/csv', (req, res) => {
-  const rows = all(`SELECT
-    s.invoice_id,
-    c.name as client_name,
-    s.title,
-    s.invoice_amount,
-    s.total_paid,
-    s.balance,
-    s.status,
-    s.due_date,
-    s.created_at
-    FROM invoice_summary s
-    JOIN clients c ON c.id = s.client_id
-    ORDER BY s.created_at DESC`);
-
-  const header = ['invoice_id','client_name','title','invoice_amount','total_paid','balance','status','due_date','created_at'];
-  const csv = [header.join(',')].concat(rows.map(r => header.map(h => String(r[h]).replace(',', ' ')).join(','))).join('\n');
-
-  res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename="invoices.csv"');
-  res.send(csv);
-});
-
-// Health
-app.get('/api/health', (req, res) => res.json({ ok: true }));
-
-app.listen(PORT, () => {
-  console.log(`Backend listening on http://localhost:${PORT}`);
-});
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, ()=> console.log('Backend running on :' + PORT));

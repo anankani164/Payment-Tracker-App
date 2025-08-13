@@ -7,29 +7,29 @@
     <link rel="icon" href="/favicon.ico" />
     <style>
       :root { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
-      body { margin: 0; background: #0b1020; color: #eef2ff; }
+      body { margin: 0; background: #f5f7fb; color: #121826; }
       .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
-      .card { background: #121833; border: 1px solid #1f2758; border-radius: 16px; padding: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.25); }
+      .card { background: #ffffff; border: 1px solid #e6e9f0; border-radius: 14px; padding: 16px; box-shadow: 0 6px 16px rgba(0,0,0,0.06); }
       .grid { display: grid; gap: 16px; }
-      .grid-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+      .grid-4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
       .grid-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
-      a { color: #a8c1ff; text-decoration: none; }
-      input, select, button, textarea { border-radius: 10px; border: 1px solid #2b3570; background: #0f1530; color: #e4e9ff; padding: 10px 12px; }
+      a { color: #2d47ff; text-decoration: none; }
+      input, select, button, textarea { border-radius: 10px; border: 1px solid #d5daea; background: #fff; color: #09101d; padding: 10px 12px; }
       button { cursor: pointer; }
       table { width: 100%; border-collapse: collapse; }
-      th, td { padding: 10px 8px; border-bottom: 1px solid #1f2758; }
-      th { text-align: left; color: #c8d4ff; font-weight: 600; }
-      .btn { background: #2d47ff; border: none; }
-      .btn.secondary { background: #37406b; }
+      th, td { padding: 10px 8px; border-bottom: 1px solid #eef0f6; }
+      th { text-align: left; color: #475072; font-weight: 600; }
+      .btn { background: #2d47ff; border: none; color: #fff; padding: 8px 12px; border-radius: 10px; }
+      .btn.secondary { background: #e7ecff; color: #2d47ff; }
       .status { padding: 4px 8px; border-radius: 999px; font-size: 12px; }
-      .status.pending { background: #3a2a00; color: #ffd36a; }
-      .status.partial { background: #1e3654; color: #7bd3ff; }
-      .status.paid { background: #113b1a; color: #8be08b; }
+      .status.pending { background: #fff1d6; color: #8a5b00; }
+      .status.partial { background: #e6f3ff; color: #075985; }
+      .status.paid { background: #e8ffe8; color: #0f5132; }
       .nav { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
-      .nav a { padding: 8px 12px; border-radius: 10px; background: #0f1530; border: 1px solid #1f2758; }
-      .nav a.active { background: #1b2350; }
+      .nav a { padding: 8px 12px; border-radius: 10px; background: #ffffff; border: 1px solid #e6e9f0; color: #121826; }
+      .nav a.active { background: #2d47ff; border-color: #2d47ff; color: #fff; }
       .page-title { font-size: 28px; font-weight: 700; margin: 16px 0; }
-      .muted { color: #a1abda; }
+      .muted { color: #6b7280; }
     </style>
   </head>
   <body>
