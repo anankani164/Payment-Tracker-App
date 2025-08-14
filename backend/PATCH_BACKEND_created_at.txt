@@ -1,0 +1,48 @@
+--- HOW TO PATCH backend/server.js ---
+
+Find the POST /api/invoices handler and replace with this version (accepts optional created_at):
+----------------------------------------------------------------
+app.post('/api/invoices', authRequired, requireRole('staff'), (req, res) => {
+  const { client_id, total, title = null, description = null, due_date = null, created_at = null } = req.body || {};
+  if (!client_id || !(total > 0)) return res.status(400).json({ error: 'client_id and total required' });
+  const sql = created_at
+    ? 'INSERT INTO invoices (client_id,total,title,description,due_date,created_at) VALUES (?,?,?,?,?,?)'
+    : 'INSERT INTO invoices (client_id,total,title,description,due_date) VALUES (?,?,?,?,?)';
+  const params = created_at
+    ? [client_id, total, title, description, due_date, created_at]
+    : [client_id, total, title, description, due_date];
+  const info = insert(sql, params);
+  const row = get('SELECT * FROM invoices WHERE id = ?', [info.lastInsertRowid]);
+  res.json(row);
+});
+----------------------------------------------------------------
+
+Find the POST /api/payments handler and replace with this version (accepts optional created_at):
+----------------------------------------------------------------
+app.post('/api/payments', authRequired, requireRole('staff'), (req, res) => {
+  const { invoice_id, amount, percent, method = null, note = null, created_at = null } = req.body || {};
+  if (!invoice_id) return res.status(400).json({ error: 'invoice_id required' });
+
+  const inv = get('SELECT id,total,COALESCE(amount_paid,0) AS amount_paid FROM invoices WHERE id = ?', [invoice_id]);
+  if (!inv) return res.status(404).json({ error: 'invoice not found' });
+
+  const payAmount = percent != null ? Number(inv.total) * (Number(percent) / 100) : Number(amount || 0);
+  if (!(payAmount > 0)) return res.status(400).json({ error: 'amount or percent > 0 required' });
+
+  if (created_at){
+    insert('INSERT INTO payments (invoice_id,amount,percent,method,note,created_at) VALUES (?,?,?,?,?,?)',
+      [invoice_id, payAmount, percent ?? null, method, note, created_at]);
+  } else {
+    insert('INSERT INTO payments (invoice_id,amount,percent,method,note) VALUES (?,?,?,?,?)',
+      [invoice_id, payAmount, percent ?? null, method, note]);
+  }
+
+  const newPaid = Number(inv.amount_paid) + payAmount;
+  const newStatus = newPaid + 0.0001 >= Number(inv.total) ? 'paid' : 'part-paid';
+  run('UPDATE invoices SET amount_paid=?, status=? WHERE id=?', [newPaid, newStatus, invoice_id]);
+
+  res.json({ ok: true, invoice_id, amount_posted: payAmount, status: newStatus, amount_paid: newPaid });
+});
+----------------------------------------------------------------
+
+No other changes needed — existing filters by date still work.
