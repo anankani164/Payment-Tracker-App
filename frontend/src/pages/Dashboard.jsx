@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Money from '../components/Money';
 import { fmtMoney, fmtNumber } from '../utils/format';
+import { Link } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
-import { Link, useSearchParams } from 'react-router-dom';
 
 import {
   Chart as ChartJS,
@@ -13,13 +13,7 @@ import { Line } from "react-chartjs-2";
 
 ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, Legend, Tooltip, Filler);
 
-const cardStyle = {
-  background: '#fff',
-  border: '1px solid #eef1f6',
-  borderRadius: 12,
-  padding: 16,
-  boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
-};
+const card = { background:'#fff', border:'1px solid #eef1f6', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.03)' };
 
 export default function Dashboard(){
   const [invoices, setInvoices] = useState([]);
@@ -28,164 +22,80 @@ export default function Dashboard(){
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [params, setParams] = useSearchParams();
-  const [filters, setFilters] = useState({
-    status: params.get('status') || '',
-    client_id: params.get('client_id') || '',
-    overdue: params.get('overdue') === 'true',
-    from: params.get('from') || '',
-    to: params.get('to') || '',
-    q: params.get('q') || ''
-  });
-
   useEffect(()=>{
     (async ()=>{
       try{
         setLoading(true);
-        const [invRes, payRes, cliRes] = await Promise.all([
-          apiFetch('/api/invoices'),
-          apiFetch('/api/payments'),
-          apiFetch('/api/clients')
+        const [inv, pay, cli] = await Promise.all([
+          (await apiFetch('/api/invoices')).json(),
+          (await apiFetch('/api/payments')).json(),
+          (await apiFetch('/api/clients')).json(),
         ]);
-        const [inv, pay, cli] = await Promise.all([invRes.json(), payRes.json(), cliRes.json()]);
-        setInvoices(Array.isArray(inv) ? inv : []);
-        setPayments(Array.isArray(pay) ? pay : []);
-        setClients(Array.isArray(cli) ? cli : []);
-        setError('');
+        setInvoices(Array.isArray(inv)?inv:[]);
+        setPayments(Array.isArray(pay)?pay:[]);
+        setClients(Array.isArray(cli)?cli:[]);
       }catch(e){
         console.error(e);
-        setError('Failed to load dashboard data');
+        setError('Failed to load dashboard');
       }finally{
         setLoading(false);
       }
     })();
   }, []);
 
-  function applyFilters(newFilters = filters){
-    const sp = new URLSearchParams();
-    Object.entries(newFilters).forEach(([k,v])=>{
-      if (k==='overdue') { if (v) sp.set('overdue','true'); }
-      else if (v) sp.set(k, v);
-    });
-    setParams(sp, { replace:true });
-  }
+  const todayISO = new Date().toISOString().slice(0,10);
+  const stats = useMemo(()=>{
+    const overdueCount = invoices.filter(i => {
+      const due = i.due_date ? new Date(i.due_date) : null;
+      const paid = String(i.status).toLowerCase() === 'paid';
+      return due && !paid && due.getTime() < Date.now();
+    }).length;
+    const totalReceived = payments.reduce((s,p)=> s + Number(p.amount||0), 0);
+    const totalOutstanding = invoices.reduce((s,i)=> s + Math.max(0, Number(i.total||0) - Number(i.amount_paid||0)), 0);
+    const thisMonth = new Date().toISOString().slice(0,7); // YYYY-MM
+    const paymentsThisMonth = payments
+      .filter(p => (p.created_at||'').startsWith(thisMonth))
+      .reduce((s,p)=> s + Number(p.amount||0), 0);
+    return { overdueCount, totalReceived, totalOutstanding, paymentsThisMonth };
+  }, [invoices, payments]);
 
-  const clientById = useMemo(()=>{
-    const map = new Map();
-    clients.forEach(c => map.set(c.id, c));
-    return map;
-  }, [clients]);
+  const topClients = useMemo(()=> clients.slice(0,5), [clients]);
 
-  const filteredInvoices = useMemo(()=>{
-    const fromTs = filters.from ? new Date(filters.from).getTime() : null;
-    const toTs = filters.to ? new Date(filters.to + 'T23:59:59').getTime() : null;
-    const q = (filters.q || '').toLowerCase();
-    return invoices.filter(inv => {
-      if (filters.status) {
-        if (filters.status === 'overdue') {
-          if (!inv.overdue) return false;
-        } else {
-          if (inv.status !== filters.status) return false;
-        }
-      }
-      if (filters.client_id && String(inv.client_id) !== String(filters.client_id)) return false;
-      if (filters.overdue && !inv.overdue) return false;
-
-      const created = inv.created_at ? new Date(inv.created_at).getTime() : null;
-      if (fromTs && (!created || created < fromTs)) return false;
-      if (toTs && (!created || created > toTs)) return false;
-
-      if (q) {
-        const clientName = clientById.get(inv.client_id)?.name?.toLowerCase() || '';
-        const hay = [inv.title, inv.description, clientName].join(' ').toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [invoices, filters, clientById]);
-
-  const invoiceById = useMemo(()=>{
-    const map = new Map();
-    invoices.forEach(i => map.set(i.id, i));
-    return map;
-  }, [invoices]);
-
-  const filteredPayments = useMemo(()=>{
-    const fromTs = filters.from ? new Date(filters.from).getTime() : null;
-    const toTs = filters.to ? new Date(filters.to + 'T23:59:59').getTime() : null;
-    return payments.filter(p => {
-      if (filters.client_id) {
-        const inv = invoiceById.get(p.invoice_id);
-        if (!inv || String(inv.client_id) !== String(filters.client_id)) return false;
-      }
-      const ts = p.created_at ? new Date(p.created_at).getTime() : null;
-      if (fromTs && (!ts || ts < fromTs)) return false;
-      if (toTs && (!ts || ts > toTs)) return false;
-      return true;
-    });
-  }, [payments, filters, invoiceById]);
-
-  const totals = useMemo(()=>{
-    const total = filteredInvoices.reduce((s,i)=> s + Number(i.total||0), 0);
-    const paid = filteredInvoices.reduce((s,i)=> s + Number(i.amount_paid||0), 0);
-    const balance = total - paid;
-    return { total, paid, balance };
-  }, [filteredInvoices]);
-
-  const recentPayments = useMemo(()=>{
-    const arr = [...filteredPayments].sort((a,b)=> new Date(b.created_at||0) - new Date(a.created_at||0));
-    return arr.slice(0, 6);
-  }, [filteredPayments]);
-
-  const lineData = useMemo(()=>{
-    // monthly totals for filtered invoices
-    const months = Array.from({length: 12}, (_,i)=> i); // 0..11
+  const chartData = useMemo(()=>{
+    const labels = [];
+    const invSeries = [];
+    const paySeries = [];
     const now = new Date();
-    const year = now.getFullYear();
-    const isInRange = (d) => {
-      const fromTs = filters.from ? new Date(filters.from).getTime() : null;
-      const toTs = filters.to ? new Date(filters.to + 'T23:59:59').getTime() : null;
-      const ts = d.getTime();
-      if (fromTs && ts < fromTs) return false;
-      if (toTs && ts > toTs) return false;
-      return true;
-    };
-    const map = new Map(months.map(m=> [m, 0]));
-    filteredInvoices.forEach(i => {
-      const d = new Date(i.created_at || i.due_date || `${year}-01-01`);
-      if (!isNaN(d) && isInRange(d)) {
-        map.set(d.getMonth(), (map.get(d.getMonth())||0) + Number(i.total||0));
-      }
-    });
-    const labels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const data = months.map(m => map.get(m)||0);
+    for (let i=5; i>=0; i--){
+      const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+      const key = d.toISOString().slice(0,7); // YYYY-MM
+      labels.push(d.toLocaleString(undefined, { month:'short', year:'numeric' }));
+      const invTotal = invoices
+        .filter(x => (x.created_at||'').slice(0,7) === key)
+        .reduce((s,x)=> s + Number(x.total||0), 0);
+      const payTotal = payments
+        .filter(x => (x.created_at||'').slice(0,7) === key)
+        .reduce((s,x)=> s + Number(x.amount||0), 0);
+      invSeries.push(invTotal);
+      paySeries.push(payTotal);
+    }
     return {
       labels,
-      datasets: [{
-        label: 'Invoice totals',
-        data,
-        fill: true,
-        tension: 0.35
-      }]
+      datasets: [
+        { label:'Invoices', data: invSeries, fill:true, tension:0.35 },
+        { label:'Payments', data: paySeries, fill:true, tension:0.35 }
+      ]
     };
-  }, [filteredInvoices, filters]);
+  }, [invoices, payments]);
 
-  const lineOpts = useMemo(()=> ({
-    responsive: true,
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        callbacks: {
-          label: (ctx) => `Total: ${fmtMoney(ctx.parsed.y,'GHS')}`
-        }
-      }
+  const chartOpts = useMemo(()=> ({
+    responsive:true,
+    plugins:{
+      legend:{ display:true, position:'top' },
+      tooltip:{ callbacks:{ label: (ctx)=> `${ctx.dataset.label}: ${fmtMoney(ctx.parsed.y,'GHS')}` } }
     },
-    scales: {
-      y: {
-        ticks: {
-          callback: (v) => fmtNumber(v)
-        }
-      }
+    scales:{
+      y:{ ticks:{ callback:(v)=> fmtNumber(v) } }
     }
   }), []);
 
@@ -196,77 +106,97 @@ export default function Dashboard(){
     <div>
       <h1 className="page-title">Dashboard</h1>
 
-      {/* Filters card (restored) */}
-      <div className="card" style={{marginBottom:12}}>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(6, minmax(0,1fr))', gap:8}}>
-          <select value={filters.status} onChange={e=>setFilters({...filters, status:e.target.value})}>
-            <option value="">All statuses</option>
-            <option value="pending">Pending</option>
-            <option value="part-paid">Part-paid</option>
-            <option value="paid">Paid</option>
-            <option value="overdue">Overdue</option>
-          </select>
-          <select value={filters.client_id} onChange={e=>setFilters({...filters, client_id:e.target.value})}>
-            <option value="">All clients</option>
-            {clients.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <input type="date" value={filters.from} onChange={e=>setFilters({...filters, from:e.target.value})} />
-          <input type="date" value={filters.to} onChange={e=>setFilters({...filters, to:e.target.value})} />
-          <input placeholder="Search…" value={filters.q} onChange={e=>setFilters({...filters, q:e.target.value})} />
-          <label style={{display:'flex', alignItems:'center', gap:6}}>
-            <input type="checkbox" checked={filters.overdue} onChange={e=>setFilters({...filters, overdue:e.target.checked})} />
-            Overdue
-          </label>
+      {/* Top Stat Cards */}
+      <div style={{display:'grid', gridTemplateColumns:'repeat(4, minmax(0,1fr))', gap:12, marginBottom:12}}>
+        <div style={card}>
+          <div className="muted">Total Outstanding</div>
+          <div style={{fontSize:24, fontWeight:700}}><Money value={stats.totalOutstanding} /></div>
         </div>
-        <div style={{display:'flex', gap:8, marginTop:10, flexWrap:'wrap'}}>
-          <button className="btn" onClick={()=>applyFilters()}>Apply</button>
-          <button className="btn secondary" onClick={()=>{ setFilters({status:'',client_id:'',overdue:false,from:'',to:'',q:''}); applyFilters({}); }}>Reset</button>
+        <div style={card}>
+          <div className="muted">Total Received</div>
+          <div style={{fontSize:24, fontWeight:700}}><Money value={stats.totalReceived} /></div>
+        </div>
+        <div style={card}>
+          <div className="muted">Overdue Invoices</div>
+          <div style={{fontSize:24, fontWeight:700}}>{stats.overdueCount}</div>
+        </div>
+        <div style={card}>
+          <div className="muted">Payments This Month</div>
+          <div style={{fontSize:24, fontWeight:700}}><Money value={stats.paymentsThisMonth} /></div>
         </div>
       </div>
 
-      {/* Top cards */}
+      {/* Quick Filters Row */}
       <div style={{display:'grid', gridTemplateColumns:'repeat(3, minmax(0,1fr))', gap:12, marginBottom:12}}>
-        <div style={cardStyle}>
-          <div className="muted">Total Invoices</div>
-          <div style={{fontSize:28, fontWeight:700}}><Money value={totals.total} /></div>
+        <a href="/invoices?status=overdue" style={{...card, borderLeft:'4px solid #ef4444', textDecoration:'none'}}>
+          <div style={{fontWeight:700, color:'#ef4444'}}>Quick Filter</div>
+          <div style={{fontWeight:700}}>Overdue Invoices</div>
+          <div className="muted" style={{fontSize:12}}>Show all invoices past due</div>
+        </a>
+        <a href={`/invoices?from=${todayISO.slice(0,7)}-01`} style={{...card, borderLeft:'4px solid #2563eb', textDecoration:'none'}}>
+          <div style={{fontWeight:700, color:'#2563eb'}}>Quick Filter</div>
+          <div style={{fontWeight:700}}>This Month&apos;s Invoices</div>
+          <div className="muted" style={{fontSize:12}}>Invoices created this month</div>
+        </a>
+        <a href={`/payments?from=${todayISO.slice(0,7)}-01`} style={{...card, borderLeft:'4px solid #10b981', textDecoration:'none'}}>
+          <div style={{fontWeight:700, color:'#10b981'}}>Quick Filter</div>
+          <div style={{fontWeight:700}}>This Month&apos;s Payments</div>
+          <div className="muted" style={{fontSize:12}}>Payments received this month</div>
+        </a>
+      </div>
+
+      {/* Clients + Recent Payments */}
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12}}>
+        <div style={card}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+            <h3 style={{margin:0}}>Clients</h3>
+            <Link to="/clients" className="muted" style={{fontSize:12, textDecoration:'none'}}>View all</Link>
+          </div>
+          <table style={{width:'100%', borderCollapse:'collapse'}}>
+            <thead><tr><th style={{textAlign:'left', padding:'6px 8px'}}></th><th style={{textAlign:'left', padding:'6px 8px'}}></th></tr></thead>
+            <tbody>
+              {topClients.map(c => (
+                <tr key={c.id} style={{borderTop:'1px solid #f0f3f8'}}>
+                  <td style={{padding:'8px 8px'}}>{c.name}</td>
+                  <td style={{padding:'8px 8px'}} className="muted">{c.email || ''}</td>
+                </tr>
+              ))}
+              {topClients.length===0 && <tr><td className="muted" style={{padding:'8px'}}>No clients yet</td></tr>}
+            </tbody>
+          </table>
         </div>
-        <div style={cardStyle}>
-          <div className="muted">Amount Paid</div>
-          <div style={{fontSize:28, fontWeight:700}}><Money value={totals.paid} /></div>
-        </div>
-        <div style={cardStyle}>
-          <div className="muted">Outstanding</div>
-          <div style={{fontSize:28, fontWeight:700}}><Money value={totals.balance} /></div>
+
+        <div style={card}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+            <h3 style={{margin:0}}>Recent Payments</h3>
+            <Link to="/invoices" className="muted" style={{fontSize:12, textDecoration:'none'}}>Invoices</Link>
+          </div>
+          <table style={{width:'100%', borderCollapse:'collapse'}}>
+            <thead><tr>
+              <th style={{textAlign:'left', padding:'6px 8px'}}>Date</th>
+              <th style={{textAlign:'right', padding:'6px 8px'}}>Amount</th>
+              <th style={{textAlign:'right', padding:'6px 8px'}}>Percent</th>
+              <th style={{textAlign:'left', padding:'6px 8px'}}>Note</th>
+            </tr></thead>
+            <tbody>
+              {[...payments].sort((a,b)=> new Date(b.created_at||0)-new Date(a.created_at||0)).slice(0,5).map(p => (
+                <tr key={p.id} style={{borderTop:'1px solid #f0f3f8'}}>
+                  <td style={{padding:'8px 8px'}}>{new Date(p.created_at).toLocaleString()}</td>
+                  <td style={{padding:'8px 8px', textAlign:'right'}}><Money value={p.amount} /></td>
+                  <td style={{padding:'8px 8px', textAlign:'right'}}>{p.percent ?? ''}</td>
+                  <td style={{padding:'8px 8px'}} className="muted">{p.note ?? ''}</td>
+                </tr>
+              ))}
+              {payments.length===0 && <tr><td className="muted" style={{padding:'8px'}}>No payments yet</td></tr>}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* Chart + Recent payments */}
-      <div style={{display:'grid', gridTemplateColumns:'2fr 1fr', gap:12, alignItems:'stretch'}}>
-        <div style={cardStyle}>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
-            <h3 style={{margin:0}}>Invoices (by month)</h3>
-          </div>
-          <Line data={lineData} options={lineOpts} />
-        </div>
-
-        <div style={cardStyle}>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
-            <h3 style={{margin:0}}>Recent Payments</h3>
-            <Link to="/payments" className="muted" style={{fontSize:12,textDecoration:'none'}}>View all →</Link>
-          </div>
-          <div style={{display:'grid', gap:8}}>
-            {recentPayments.map(p => (
-              <div key={p.id} style={{display:'flex', justifyContent:'space-between', alignItems:'center', border:'1px solid #f0f3f8', borderRadius:10, padding:'8px 10px'}}>
-                <div style={{display:'flex', flexDirection:'column'}}>
-                  <span style={{fontWeight:600}}>{p.method || 'Payment'}</span>
-                  <span className="muted" style={{fontSize:12}}>{new Date(p.created_at).toLocaleString()}</span>
-                </div>
-                <div style={{fontWeight:700}}><Money value={p.amount} /></div>
-              </div>
-            ))}
-            {recentPayments.length===0 && <div className="muted">No recent payments</div>}
-          </div>
-        </div>
+      {/* Chart: Invoices vs Payments (last 6 months) */}
+      <div style={card}>
+        <h3 style={{marginTop:0}}>Invoices vs Payments (last 6 months)</h3>
+        <Line data={chartData} options={chartOpts} />
       </div>
     </div>
   );
