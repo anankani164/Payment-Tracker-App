@@ -10,7 +10,7 @@ import Admin from './pages/Admin.jsx';
 export default function App(){
   return (
     <div className="container">
-      <nav className="nav">
+      <nav className="nav" style={{display:'flex', gap:12, padding:'12px 0'}}>
         <NavLink to="/" end className={({isActive})=> isActive?'active':''}>Dashboard</NavLink>
         <NavLink to="/clients" className={({isActive})=> isActive?'active':''}>Clients</NavLink>
         <NavLink to="/invoices" className={({isActive})=> isActive?'active':''}>Invoices</NavLink>
