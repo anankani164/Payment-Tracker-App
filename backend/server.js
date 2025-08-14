@@ -117,7 +117,7 @@ app.get('/api/invoices', (req, res) => {
   if (client_id) { where.push('i.client_id = ?'); params.push(Number(client_id)); }
   if (from) { where.push("date(i.created_at) >= date(?)"); params.push(from); }
   if (to)   { where.push("date(i.created_at) <= date(?)"); params.push(to); }
-  if (overdue === 'true' or status === 'overdue') {
+  if (overdue === 'true' || status === 'overdue') {
     where.push("i.status != 'paid' AND i.due_date IS NOT NULL AND date(i.due_date) < date('now')");
   }
   if (q) {
