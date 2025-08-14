@@ -32,7 +32,7 @@ export default function InvoiceDetails(){
     if ((!amount || amount<=0) && (!percent || percent<=0)) {
       return alert('Enter an amount or percent > 0');
     }
-    setBusy(True);
+    setBusy(true);
     try{
       const body = { invoice_id: Number(id) };
       if (amount) body.amount = amount;
@@ -49,14 +49,14 @@ export default function InvoiceDetails(){
     }catch(err){
       alert(err.message || 'Unauthorized (please login)');
     }finally{
-      setBusy(False);
+      setBusy(false);
     }
   }
 
   async function deletePayment(pid){
     if(!confirm('Delete this payment? This will update the invoice balance.')) return;
     try{
-      setBusy(True);
+      setBusy(true);
       const res = await apiFetch(`/api/payments/${pid}`, { method:'DELETE' });
       if(!res.ok){
         const d = await res.json().catch(()=>({}));
@@ -66,7 +66,7 @@ export default function InvoiceDetails(){
     }catch(err){
       alert(err.message || 'Unauthorized (please login)');
     }finally{
-      setBusy(False);
+      setBusy(false);
     }
   }
 
@@ -121,7 +121,7 @@ export default function InvoiceDetails(){
                 <td>{p.percent ?? ''}</td>
                 <td>{p.method ?? ''}</td>
                 <td>{p.note ?? ''}</td>
-                <td><button className="btn danger" onClick={()=>deletePayment(p.id)} disabled={busy}>Delete</button></td>
+                <td><button type="button" className="btn danger" onClick={()=>deletePayment(p.id)} disabled={busy}>Delete</button></td>
               </tr>
             ))}
             {(!invoice.payments || invoice.payments.length===0) && <tr><td colSpan={6} className="muted">No payments yet</td></tr>}
@@ -138,7 +138,7 @@ export default function InvoiceDetails(){
           <input placeholder="Note (optional)" value={form.note} onChange={e=>setForm({...form, note:e.target.value})} />
           <div style={{gridColumn:'1 / -1', display:'flex', gap:8, justifyContent:'flex-end'}}>
             <Link to="/invoices" className="border" style={{padding:'8px 12px', borderRadius:8, textDecoration:'none'}}>Back</Link>
-            <button className="btn" disabled={busy}>{busy ? 'Saving…' : 'Add payment'}</button>
+            <button type="submit" className="btn" disabled={busy}>{busy ? 'Saving…' : 'Add payment'}</button>
           </div>
         </form>
         <p className="muted" style={{marginTop:8}}>Tip: Fill either Amount <b>or</b> Percent. If both are filled, Amount wins.</p>
