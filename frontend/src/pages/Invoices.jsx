@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { downloadCSV, downloadPDF } from '../utils/export';
+import { apiFetch } from '../utils/api';
 
 export default function Invoices(){
   const [invoices, setInvoices] = useState([]);
@@ -38,14 +39,22 @@ export default function Invoices(){
   async function add(){
     const body = {...form, client_id:Number(form.client_id), total:Number(form.total)};
     if(!body.client_id || !(body.total>0)) return alert('Select client and amount > 0');
-    const r = await fetch('/api/invoices', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const r = await apiFetch('/api/invoices', {method:'POST', body: JSON.stringify(body)});
     if(!r.ok) return alert('Failed to add invoice');
     setShow(false); setForm({client_id:'', total:'', title:'', description:'', due_date:''}); load();
   }
 
   async function markPaid(id){
-    const r = await fetch(`/api/invoices/${id}/mark-paid`, {method:'POST'});
+    const r = await apiFetch(`/api/invoices/${id}/mark-paid`, {method:'POST'});
     if(!r.ok) return alert('Failed to mark as paid');
+    load();
+  }
+
+  async function del(id){
+    if(!confirm('Delete this invoice and its payments?')) return;
+    const r = await apiFetch(`/api/invoices/${id}?force=true`, {method:'DELETE'});
+    const data = await r.json();
+    if(!r.ok) return alert(data?.error||'Failed to delete');
     load();
   }
 
@@ -61,6 +70,7 @@ export default function Invoices(){
             <option value="pending">Pending</option>
             <option value="part-paid">Part-paid</option>
             <option value="paid">Paid</option>
+            <option value="overdue">Overdue</option>
           </select>
           <select value={filters.client_id} onChange={e=>setFilters({...filters, client_id:e.target.value})}>
             <option value="">All clients</option>
@@ -74,19 +84,19 @@ export default function Invoices(){
             Overdue
           </label>
         </div>
-        <div style={{display:'flex', gap:8, marginTop:10}}>
+        <div style={{display:'flex', gap:8, marginTop:10, flexWrap:'wrap'}}>
           <button className="btn" onClick={()=>applyFilters()}>Apply</button>
           <button className="btn secondary" onClick={()=>{ setFilters({status:'',client_id:'',overdue:false,from:'',to:'',q:''}); applyFilters({}); }}>Reset</button>
         </div>
       </div>
 
-      <div style={{display:'flex',gap:8, marginBottom:12}}>
+      <div style={{display:'flex',gap:8, marginBottom:12, flexWrap:'wrap'}}>
         <button className="btn" onClick={()=>setShow(true)}>Add Invoice</button>
         <button className="btn secondary" onClick={()=>downloadCSV('invoices.csv', invoices)}>Export CSV</button>
         <button className="btn secondary" onClick={()=>downloadPDF('Invoices', invoices)}>Export PDF</button>
       </div>
 
-      <div className="card">
+      <div className="card table-wrap">
         <table>
           <thead><tr><th>#</th><th>Client</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Due</th><th>Actions</th></tr></thead>
           <tbody>
@@ -99,18 +109,19 @@ export default function Invoices(){
                 <td>{Number(inv.balance||0).toFixed(2)}</td>
                 <td><span className={`status ${inv.status==='part-paid'?'partial':inv.status}`}>{inv.status}{inv.overdue?' • Overdue':''}</span></td>
                 <td>{inv.due_date||''}</td>
-                <td style={{display:'flex', gap:8}}>
+                <td style={{display:'flex', gap:8, flexWrap:'wrap'}}>
                   <Link to={`/invoices/${inv.id}`}>View</Link>
                   {inv.status!=='paid' && <button className="btn secondary" onClick={()=>markPaid(inv.id)}>Mark paid</button>}
+                  <button className="btn danger" onClick={()=>del(inv.id)}>Delete</button>
                 </td>
               </tr>
             ))}
-            {invoices.length===0 && <tr><td colSpan={8} className="muted">No invoices found</td></tr>}
+            {invoices.length===0 and <tr><td colSpan={8} className="muted">No invoices found</td></tr>}
           </tbody>
         </table>
       </div>
 
-      {show && (
+      {show and (
         <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center'}}>
           <div className="card" style={{width:'100%', maxWidth:520}}>
             <h3 style={{marginTop:0}}>Add invoice</h3>

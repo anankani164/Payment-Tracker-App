@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { apiFetch } from '../utils/api';
 
 export default function Payments(){
   const [payments, setPayments] = useState([]);
@@ -26,6 +27,14 @@ export default function Payments(){
   }
   useEffect(()=>{ load(); },[params]);
 
+  async function del(id){
+    if(!confirm('Delete this payment? This will adjust the invoice balance.')) return;
+    const r = await apiFetch(`/api/payments/${id}`, {method:'DELETE'});
+    const data = await r.json();
+    if(!r.ok) return alert(data?.error||'Failed to delete');
+    load();
+  }
+
   return (
     <div>
       <h1 className="page-title">Payments</h1>
@@ -40,15 +49,15 @@ export default function Payments(){
           <input type="date" value={filters.from} onChange={e=>setFilters({...filters, from:e.target.value})} />
           <input type="date" value={filters.to} onChange={e=>setFilters({...filters, to:e.target.value})} />
         </div>
-        <div style={{display:'flex', gap:8, marginTop:10}}>
+        <div style={{display:'flex', gap:8, marginTop:10, flexWrap:'wrap'}}>
           <button className="btn" onClick={()=>applyFilters()}>Apply</button>
           <button className="btn secondary" onClick={()=>{ setFilters({client_id:'', invoice_id:'', from:'', to:''}); applyFilters({}); }}>Reset</button>
         </div>
       </div>
 
-      <div className="card">
+      <div className="card table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>Amount</th><th>Percent</th><th>Invoice</th><th>Method</th><th>Note</th></tr></thead>
+          <thead><tr><th>Date</th><th>Amount</th><th>Percent</th><th>Invoice</th><th>Method</th><th>Note</th><th></th></tr></thead>
           <tbody>
             {payments.map(p=> (
               <tr key={p.id}>
@@ -58,9 +67,10 @@ export default function Payments(){
                 <td>{p.invoice_id ? <Link to={`/invoices/${p.invoice_id}`}>#{p.invoice_id}</Link> : ''}</td>
                 <td>{p.method ?? ''}</td>
                 <td>{p.note ?? ''}</td>
+                <td><button className="btn danger" onClick={()=>del(p.id)}>Delete</button></td>
               </tr>
             ))}
-            {payments.length===0 && <tr><td colSpan={6} className="muted">No payments found</td></tr>}
+            {payments.length===0 && <tr><td colSpan={7} className="muted">No payments found</td></tr>}
           </tbody>
         </table>
       </div>
