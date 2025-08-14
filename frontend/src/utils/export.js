@@ -1,8 +1,9 @@
 /**
- * CSV + PDF (print) export helpers with zero dependencies.
- * PDF export opens a new window with a printable table and triggers window.print(),
- * so the user can choose "Save as PDF". This avoids app crashes / blank screens.
+ * Export helpers using jsPDF + autoTable (no pop-ups).
+ * Requires: npm install jspdf jspdf-autotable
  */
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 export function downloadCSV(filename, rows){
   if (!Array.isArray(rows) || rows.length === 0){
@@ -31,60 +32,20 @@ export function downloadPDF(title, rows){
     alert('No data to export'); return;
   }
   const headers = Object.keys(rows[0]);
+  const doc = new jsPDF('l', 'pt', 'a4'); // landscape
+  doc.setFontSize(14);
+  doc.text(title, 40, 32);
+  doc.setFontSize(10);
+  doc.text(new Date().toLocaleString(), 40, 48);
 
-  const w = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=800');
-  if (!w){ alert('Popup blocked. Please allow popups to export.'); return; }
-
-  const style = `
-    <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding: 24px; }
-      h1 { margin: 0 0 12px; font-size: 18px; }
-      table { width: 100%; border-collapse: collapse; font-size: 12px; }
-      th, td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; vertical-align: top; }
-      thead { background: #f8fafc; }
-      tfoot td { font-weight: 600; }
-      .muted { color: #64748b; font-size: 12px; margin: 6px 0 16px; }
-      @media print {
-        @page { size: A4 landscape; margin: 12mm; }
-      }
-    </style>
-  `;
-
-  const headerHtml = headers.map(h => `<th>${escapeHtml(h)}</th>`).join('');
-  const rowsHtml = rows.map(r => {
-    return '<tr>' + headers.map(h => `<td>${escapeHtml(r[h])}</td>`).join('') + '</tr>';
-  }).join('');
-
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head><meta charset="utf-8">${style}<title>${escapeHtml(title)}</title></head>
-      <body>
-        <h1>${escapeHtml(title)}</h1>
-        <div class="muted">${new Date().toLocaleString()}</div>
-        <table>
-          <thead><tr>${headerHtml}</tr></thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
-        <script>
-          // Wait for render then print
-          window.addEventListener('load', () => setTimeout(() => window.print(), 100));
-        </script>
-      </body>
-    </html>
-  `;
-
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
-}
-
-function escapeHtml(v){
-  if (v == null) return '';
-  return String(v)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  const body = rows.map(r => headers.map(h => (r[h] ?? '')));
+  doc.autoTable({
+    startY: 60,
+    head: [headers],
+    body,
+    styles: { fontSize: 9, cellPadding: 4 },
+    headStyles: { fillColor: [231, 236, 255], textColor: 0 },
+    margin: { left: 40, right: 40 }
+  });
+  doc.save(`${title.replace(/\s+/g,'_').toLowerCase()}.pdf`);
 }
