@@ -7,6 +7,7 @@ import InvoiceDetails from './pages/InvoiceDetails.jsx';
 import Payments from './pages/Payments.jsx';
 import Admin from './pages/Admin.jsx';
 import Login from './pages/Login.jsx';
+import Register from './pages/Register.jsx';
 import { getToken, clearToken } from './utils/api';
 
 export default function App(){
@@ -34,7 +35,10 @@ export default function App(){
         <NavLink to="/admin">Admin</NavLink>
         <span style={{marginLeft:'auto'}} />
         {!token ? (
-          <NavLink to="/login">Login</NavLink>
+          <>
+            <NavLink to="/login">Login</NavLink>
+            <NavLink to="/register">Register</NavLink>
+          </>
         ) : (
           <button className="btn secondary" onClick={logout}>Logout</button>
         )}
@@ -48,6 +52,7 @@ export default function App(){
         <Route path="/payments" element={<Payments/>} />
         <Route path="/admin" element={<Admin/>} />
         <Route path="/login" element={<Login/>} />
+        <Route path="/register" element={<Register/>} />
       </Routes>
     </div>
   );
