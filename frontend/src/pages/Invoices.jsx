@@ -8,7 +8,6 @@ export default function Invoices(){
   const [show, setShow] = useState(false);
   const [form, setForm] = useState({client_id:'', total:'', title:'', description:'', due_date:''});
 
-  // Filters
   const [params, setParams] = useSearchParams();
   const [filters, setFilters] = useState({
     status: params.get('status') || '',
