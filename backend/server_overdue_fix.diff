@@ -1,0 +1,7 @@
+--- a/backend/server.js
++++ b/backend/server.js
+@@
+-  if (overdue === 'true' or status === 'overdue') {
++  if (overdue === 'true' || status === 'overdue') {
+     where.push("i.status != 'paid' AND i.due_date IS NOT NULL AND date(i.due_date) < date('now')");
+   }
