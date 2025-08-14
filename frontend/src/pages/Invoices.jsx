@@ -116,12 +116,12 @@ export default function Invoices(){
                 </td>
               </tr>
             ))}
-            {invoices.length===0 and <tr><td colSpan={8} className="muted">No invoices found</td></tr>}
+            {invoices.length===0 && <tr><td colSpan={8} className="muted">No invoices found</td></tr>}
           </tbody>
         </table>
       </div>
 
-      {show and (
+      {show && (
         <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center'}}>
           <div className="card" style={{width:'100%', maxWidth:520}}>
             <h3 style={{marginTop:0}}>Add invoice</h3>
