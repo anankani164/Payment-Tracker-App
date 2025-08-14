@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { downloadCSV, downloadPDF } from '../utils/export';
 import { apiFetch } from '../utils/api';
+import { fmtMoney } from '../utils/format';
+import Money from '../components/Money';
 
 export default function Invoices(){
   const [invoices, setInvoices] = useState([]);
@@ -73,9 +75,9 @@ export default function Invoices(){
       ID: inv.id,
       Client: inv.client?.name || inv.client_id,
       Title: inv.title || '',
-      Total: Number(inv.total||0).toFixed(2),
-      Paid: Number(inv.amount_paid||0).toFixed(2),
-      Balance: Number(inv.balance||0).toFixed(2),
+      Total: fmtMoney(inv.total, 'GHS'),
+      Paid: fmtMoney(inv.amount_paid||0, 'GHS'),
+      Balance: fmtMoney(inv.balance||0, 'GHS'),
       Status: inv.status + (inv.overdue ? ' (Overdue)' : ''),
       'Due Date': inv.due_date || '',
       'Created': inv.created_at || ''
@@ -130,9 +132,9 @@ export default function Invoices(){
                 <td>{inv.id}</td>
                 <td>{inv.client?.name||inv.client_id}</td>
                 <td>{inv.title||''}</td>
-                <td>{Number(inv.total).toFixed(2)}</td>
-                <td>{Number(inv.amount_paid||0).toFixed(2)}</td>
-                <td>{Number(inv.balance||0).toFixed(2)}</td>
+                <td><Money value={inv.total} /></td>
+                <td><Money value={inv.amount_paid||0} /></td>
+                <td><Money value={inv.balance||0} /></td>
                 <td><span className={`status ${inv.status==='part-paid'?'partial':inv.status}`}>{inv.status}{inv.overdue?' • Overdue':''}</span></td>
                 <td>{inv.due_date||''}</td>
                 <td>{inv.created_at||''}</td>

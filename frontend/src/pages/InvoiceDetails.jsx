@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
+import Money from '../components/Money';
+import { fmtMoney } from '../utils/format';
 
 export default function InvoiceDetails(){
   const { id } = useParams();
@@ -116,15 +118,15 @@ export default function InvoiceDetails(){
           </div>
           <div>
             <div className="muted">Total</div>
-            <div>GHS {Number(invoice.total).toFixed(2)}</div>
+            <div><Money value={invoice.total} /></div>
           </div>
           <div>
             <div className="muted">Paid</div>
-            <div>GHS {Number(invoice.amount_paid||0).toFixed(2)}</div>
+            <div><Money value={invoice.amount_paid||0} /></div>
           </div>
           <div>
             <div className="muted">Balance</div>
-            <div>GHS {balance.toFixed(2)}</div>
+            <div><Money value={balance} /></div>
           </div>
           <div>
             <div className="muted">Due date</div>
@@ -141,7 +143,7 @@ export default function InvoiceDetails(){
             {(invoice.payments||[]).map(p => (
               <tr key={p.id}>
                 <td>{new Date(p.created_at).toLocaleString()}</td>
-                <td>{Number(p.amount).toFixed(2)}</td>
+                <td><Money value={p.amount} /></td>
                 <td>{p.percent ?? ''}</td>
                 <td>{p.method ?? ''}</td>
                 <td>{p.note ?? ''}</td>

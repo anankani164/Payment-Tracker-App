@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
 import { downloadCSV, downloadPDF } from '../utils/export';
+import { fmtMoney } from '../utils/format';
+import Money from '../components/Money';
 
 export default function Payments(){
   const [payments, setPayments] = useState([]);
@@ -31,7 +33,7 @@ export default function Payments(){
   function exportPaymentsPDF(){
     const rows = payments.map(p => ({
       Date: new Date(p.created_at).toLocaleString(),
-      Amount: Number(p.amount||0).toFixed(2),
+      Amount: fmtMoney(p.amount||0,'GHS'),
       Percent: p.percent ?? '',
       Invoice: p.invoice_id ? `#${p.invoice_id}` : '',
       Method: p.method ?? '',
@@ -80,7 +82,7 @@ export default function Payments(){
             {payments.map(p=> (
               <tr key={p.id}>
                 <td>{new Date(p.created_at).toLocaleString()}</td>
-                <td>{Number(p.amount).toFixed(2)}</td>
+                <td><Money value={p.amount} /></td>
                 <td>{p.percent ?? ''}</td>
                 <td>{p.invoice_id ? <Link to={`/invoices/${p.invoice_id}`}>#{p.invoice_id}</Link> : ''}</td>
                 <td>{p.method ?? ''}</td>
