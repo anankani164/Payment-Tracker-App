@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
+import { downloadCSV, downloadPDF } from '../utils/export';
 
 export default function Payments(){
   const [payments, setPayments] = useState([]);
@@ -26,6 +27,18 @@ export default function Payments(){
     setClients(await (await fetch('/api/clients')).json());
   }
   useEffect(()=>{ load(); },[params]);
+
+  function exportPaymentsPDF(){
+    const rows = payments.map(p => ({
+      Date: new Date(p.created_at).toLocaleString(),
+      Amount: Number(p.amount||0).toFixed(2),
+      Percent: p.percent ?? '',
+      Invoice: p.invoice_id ? `#${p.invoice_id}` : '',
+      Method: p.method ?? '',
+      Note: p.note ?? ''
+    }));
+    downloadPDF('Payments', rows);
+  }
 
   async function del(id){
     if(!confirm('Delete this payment? This will adjust the invoice balance.')) return;
@@ -53,6 +66,11 @@ export default function Payments(){
           <button className="btn" onClick={()=>applyFilters()}>Apply</button>
           <button className="btn secondary" onClick={()=>{ setFilters({client_id:'', invoice_id:'', from:'', to:''}); applyFilters({}); }}>Reset</button>
         </div>
+      </div>
+
+      <div style={{display:'flex',gap:8, marginBottom:12, flexWrap:'wrap'}}>
+        <button className="btn secondary" onClick={()=>downloadCSV('payments.csv', payments)}>Export CSV</button>
+        <button className="btn secondary" onClick={exportPaymentsPDF}>Export PDF</button>
       </div>
 
       <div className="card table-wrap">

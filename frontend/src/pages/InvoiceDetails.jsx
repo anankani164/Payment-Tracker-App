@@ -7,7 +7,7 @@ export default function InvoiceDetails(){
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ amount:'', percent:'', method:'', note:'' });
+  const [form, setForm] = useState({ amount:'', percent:'', method:'', note:'', created_at:'' });
   const [busy, setBusy] = useState(false);
 
   async function load(){
@@ -39,12 +39,16 @@ export default function InvoiceDetails(){
       if (percent) body.percent = percent;
       if (form.method) body.method = form.method;
       if (form.note) body.note = form.note;
+      if (form.created_at) {
+        const d = new Date(form.created_at);
+        if (!isNaN(d)) body.created_at = d.toISOString();
+      }
       const res = await apiFetch('/api/payments', { method:'POST', body: JSON.stringify(body) });
       if(!res.ok){
         const d = await res.json().catch(()=>({}));
         throw new Error(d?.error || 'Failed to add payment');
       }
-      setForm({ amount:'', percent:'', method:'', note:'' });
+      setForm({ amount:'', percent:'', method:'', note:'', created_at:'' });
       await load();
     }catch(err){
       alert(err.message || 'Unauthorized (please login)');
@@ -131,11 +135,12 @@ export default function InvoiceDetails(){
 
       <div className="card">
         <h3 style={{marginTop:0}}>Add payment</h3>
-        <form onSubmit={addPayment} style={{display:'grid', gridTemplateColumns:'repeat(4,minmax(0,1fr))', gap:8}}>
+        <form onSubmit={addPayment} style={{display:'grid', gridTemplateColumns:'repeat(5,minmax(0,1fr))', gap:8}}>
           <input type="number" step="0.01" placeholder="Amount (GHS)" value={form.amount} onChange={e=>setForm({...form, amount:e.target.value})} />
           <input type="number" step="0.01" placeholder="Percent (%)" value={form.percent} onChange={e=>setForm({...form, percent:e.target.value})} />
           <input placeholder="Method (optional)" value={form.method} onChange={e=>setForm({...form, method:e.target.value})} />
           <input placeholder="Note (optional)" value={form.note} onChange={e=>setForm({...form, note:e.target.value})} />
+          <input type="datetime-local" value={form.created_at} onChange={e=>setForm({...form, created_at:e.target.value})} />
           <div style={{gridColumn:'1 / -1', display:'flex', gap:8, justifyContent:'flex-end'}}>
             <Link to="/invoices" className="border" style={{padding:'8px 12px', borderRadius:8, textDecoration:'none'}}>Back</Link>
             <button type="submit" className="btn" disabled={busy}>{busy ? 'Saving…' : 'Add payment'}</button>
