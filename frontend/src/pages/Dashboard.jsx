@@ -82,8 +82,30 @@ export default function Dashboard(){
     return {
       labels,
       datasets: [
-        { label:'Invoices', data: invSeries, fill:true, tension:0.35 },
-        { label:'Payments', data: paySeries, fill:true, tension:0.35 }
+        { 
+          label:'Invoices', 
+          data: invSeries, 
+          fill:true, 
+          tension:0.35,
+          borderColor: 'rgba(59,130,246,1)',         // blue 500
+          backgroundColor: 'rgba(59,130,246,0.15)',  // blue fill
+          pointBackgroundColor: 'rgba(59,130,246,1)',
+          pointBorderColor: 'rgba(255,255,255,1)',
+          pointRadius: 3,
+          borderWidth: 2
+        },
+        { 
+          label:'Payments', 
+          data: paySeries, 
+          fill:true, 
+          tension:0.35,
+          borderColor: 'rgba(16,185,129,1)',         // emerald 500
+          backgroundColor: 'rgba(16,185,129,0.15)',  // green fill
+          pointBackgroundColor: 'rgba(16,185,129,1)',
+          pointBorderColor: 'rgba(255,255,255,1)',
+          pointRadius: 3,
+          borderWidth: 2
+        }
       ]
     };
   }, [invoices, payments]);
@@ -155,13 +177,13 @@ export default function Dashboard(){
           <table style={{width:'100%', borderCollapse:'collapse'}}>
             <thead><tr><th style={{textAlign:'left', padding:'6px 8px'}}></th><th style={{textAlign:'left', padding:'6px 8px'}}></th></tr></thead>
             <tbody>
-              {topClients.map(c => (
+              {clients.slice(0,5).map(c => (
                 <tr key={c.id} style={{borderTop:'1px solid #f0f3f8'}}>
                   <td style={{padding:'8px 8px'}}>{c.name}</td>
                   <td style={{padding:'8px 8px'}} className="muted">{c.email || ''}</td>
                 </tr>
               ))}
-              {topClients.length===0 && <tr><td className="muted" style={{padding:'8px'}}>No clients yet</td></tr>}
+              {clients.length===0 && <tr><td className="muted" style={{padding:'8px'}}>No clients yet</td></tr>}
             </tbody>
           </table>
         </div>
