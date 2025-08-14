@@ -36,3 +36,13 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON payments(invoice_id);
+
+-- Users for auth/roles
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'viewer', -- viewer | staff | admin
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
