@@ -17,7 +17,6 @@ export function fmtMoney(value, currency = 'GHS', { decimals = 2, useSymbol = fa
     const zero = (0).toFixed(decimals);
     return useSymbol ? zero : `${currency} ${zero}`;
   }
-  // currencyDisplay: 'code' produces "GHS 12,345.67"; 'symbol' produces "GH₵12,345.67" (if supported)
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
@@ -26,12 +25,4 @@ export function fmtMoney(value, currency = 'GHS', { decimals = 2, useSymbol = fa
     maximumFractionDigits: decimals,
     useGrouping: true
   }).format(n);
-}
-
-// Compact money (e.g., 1.2K, 3.4M) if needed on small cards
-export function fmtCompactMoney(value, currency='GHS'){
-  const n = Number(value);
-  if (!isFinite(n)) return `${currency} 0`;
-  const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
-  return `${currency} ${compact}`;
 }
