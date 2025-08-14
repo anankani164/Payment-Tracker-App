@@ -236,7 +236,7 @@ export default function Dashboard(){
           </table>
         </div>
 
-        <div style={cardStyle}}>
+        <div style={cardStyle}>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
             <h3 style={{margin:0}}>Recent Payments</h3>
             <a href="/invoices" style={{background:'#e7ecff', color: COLORS.primary, padding:'6px 10px', borderRadius:10, textDecoration:'none'}}>Invoices</a>
