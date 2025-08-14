@@ -1,7 +1,6 @@
 /**
  * Number formatting helpers with enforced thousand separators.
  */
-
 export function fmtNumber(value, { decimals = 2 } = {}){
   const n = Number(value);
   if (!isFinite(n)) return (0).toFixed(decimals);
