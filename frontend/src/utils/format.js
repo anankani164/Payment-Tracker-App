@@ -1,8 +1,5 @@
 /**
- * Number formatting helpers for consistent, readable figures.
- * - Thousand separators
- * - Fixed decimal places
- * - Currency support (default GHS)
+ * Number formatting helpers with enforced thousand separators.
  */
 
 export function fmtNumber(value, { decimals = 2 } = {}){
@@ -10,19 +7,20 @@ export function fmtNumber(value, { decimals = 2 } = {}){
   if (!isFinite(n)) return (0).toFixed(decimals);
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals
+    maximumFractionDigits: decimals,
+    useGrouping: true
   }).format(n);
 }
 
 export function fmtMoney(value, currency = 'GHS', { decimals = 2, useSymbol = false } = {}){
   const n = Number(value);
   if (!isFinite(n)) return `${useSymbol ? '' : currency + ' '}${(0).toFixed(decimals)}`;
-  const s = new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
     currencyDisplay: useSymbol ? 'symbol' : 'code',
     minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals
+    maximumFractionDigits: decimals,
+    useGrouping: true
   }).format(n);
-  return s;
 }
