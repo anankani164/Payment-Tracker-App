@@ -25,6 +25,22 @@ export default function InvoiceDetails(){
   }
   useEffect(()=>{ load(); }, [id]);
 
+  async function markPaid(){
+    try{
+      setBusy(true);
+      const r = await apiFetch(`/api/invoices/${id}/mark-paid`, { method:'POST' });
+      if(!r.ok){
+        const d = await r.json().catch(()=>({}));
+        throw new Error(d?.error || 'Failed to mark paid');
+      }
+      await load();
+    }catch(err){
+      alert(err.message || 'Unauthorized (please login)');
+    }finally{
+      setBusy(false);
+    }
+  }
+
   async function addPayment(e){
     e.preventDefault();
     const amount = form.amount ? Number(form.amount) : null;
@@ -85,11 +101,15 @@ export default function InvoiceDetails(){
       <h1 className="page-title">Invoice #{invoice.id}</h1>
 
       <div className="card" style={{marginBottom:12}}>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:8}}>
-          <div>
-            <div className="muted">Client</div>
-            <div>{invoice.client?.name || invoice.client_id}</div>
-          </div>
+        <div style={{display:'flex', gap:8, justifyContent:'space-between', alignItems:'center'}}>
+          <div className="muted">Client: <b>{invoice.client?.name || invoice.client_id}</b></div>
+          {invoice.status!=='paid' && (
+            <button className="btn secondary" onClick={markPaid} disabled={busy}>
+              {busy ? 'Working…' : 'Mark as paid'}
+            </button>
+          )}
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:8, marginTop:8}}>
           <div>
             <div className="muted">Status</div>
             <div><span className={'status ' + (invoice.status==='part-paid'?'partial':invoice.status)}>{invoice.status}</span></div>

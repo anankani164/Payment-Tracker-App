@@ -43,9 +43,7 @@ export default function Invoices(){
       total: Number(form.total)
     };
     if(!body.client_id || !(body.total>0)) return alert('Select client and amount > 0');
-    // Optional created_at: if blank, backend will set default
     if (body.created_at) {
-      // normalize to ISO "YYYY-MM-DDTHH:mm:ss" (no timezone shift)
       const d = new Date(body.created_at);
       if (!isNaN(d)) body.created_at = d.toISOString();
     } else {
@@ -54,6 +52,20 @@ export default function Invoices(){
     const r = await apiFetch('/api/invoices', {method:'POST', body: JSON.stringify(body)});
     if(!r.ok) return alert('Failed to add invoice');
     setShow(false); setForm({client_id:'', total:'', title:'', description:'', due_date:'', created_at:''}); load();
+  }
+
+  async function markPaid(id){
+    const r = await apiFetch(`/api/invoices/${id}/mark-paid`, {method:'POST'});
+    if(!r.ok) return alert('Failed to mark as paid');
+    load();
+  }
+
+  async function del(id){
+    if(!confirm('Delete this invoice and its payments?')) return;
+    const r = await apiFetch(`/api/invoices/${id}?force=true`, {method:'DELETE'});
+    const data = await r.json();
+    if(!r.ok) return alert(data?.error||'Failed to delete');
+    load();
   }
 
   function exportInvoicesPDF(){
@@ -126,6 +138,8 @@ export default function Invoices(){
                 <td>{inv.created_at||''}</td>
                 <td style={{display:'flex', gap:8, flexWrap:'wrap'}}>
                   <Link to={`/invoices/${inv.id}`}>View</Link>
+                  {inv.status!=='paid' && <button className="btn secondary" onClick={()=>markPaid(inv.id)}>Mark paid</button>}
+                  <button className="btn danger" onClick={()=>del(inv.id)}>Delete</button>
                 </td>
               </tr>
             ))}
@@ -147,7 +161,6 @@ export default function Invoices(){
               <textarea placeholder="Description (optional)" value={form.description} onChange={e=>setForm({...form, description:e.target.value})} />
               <input type="number" step="0.01" placeholder="Total amount" value={form.total} onChange={e=>setForm({...form, total:e.target.value})} />
               <input type="date" value={form.due_date} onChange={e=>setForm({...form, due_date:e.target.value})} />
-              {/* Optional: set invoice created date/time */}
               <input type="datetime-local" value={form.created_at} onChange={e=>setForm({...form, created_at:e.target.value})} />
             </div>
             <div style={{display:'flex', gap:8, justifyContent:'flex-end', marginTop:12}}>
