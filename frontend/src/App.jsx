@@ -9,21 +9,52 @@ import Admin from './pages/Admin.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import { getToken, clearToken } from './utils/api';
+import { apiFetch } from './utils/api';
 
 export default function App(){
   const [token, setTokenState] = useState(getToken());
+  const [user, setUser] = useState(null);
   const navigate = useNavigate();
 
+  // Poll token presence so UI reflects login/logout from other tabs
   useEffect(()=>{
     const i = setInterval(()=> setTokenState(getToken()), 1000);
     return ()=> clearInterval(i);
   },[]);
 
+  // Whenever token exists, fetch /me to get role for badge
+  useEffect(()=>{
+    let cancelled = false;
+    async function fetchMe(){
+      if (!getToken()) { setUser(null); return; }
+      try{
+        const r = await apiFetch('/api/auth/me');
+        const d = await r.json();
+        if (!cancelled) setUser(d?.user || null);
+      }catch{
+        if (!cancelled) setUser(null);
+      }
+    }
+    fetchMe();
+    return ()=>{ cancelled = true; };
+  }, [token]);
+
   function logout(){
     clearToken();
+    setUser(null);
     setTokenState(null);
     navigate('/login');
   }
+
+  const badgeStyle = {
+    padding: '2px 8px',
+    borderRadius: 999,
+    fontSize: 12,
+    background: '#eef2ff',
+    color: '#2d47ff',
+    border: '1px solid #dfe3f6',
+    marginLeft: 8
+  };
 
   return (
     <div className="container">
@@ -40,7 +71,10 @@ export default function App(){
             <NavLink to="/register">Register</NavLink>
           </>
         ) : (
-          <button className="btn secondary" onClick={logout}>Logout</button>
+          <>
+            {user && <span title={user.email} style={badgeStyle}>{user.role}</span>}
+            <button className="btn secondary" onClick={logout}>Logout</button>
+          </>
         )}
       </nav>
 
