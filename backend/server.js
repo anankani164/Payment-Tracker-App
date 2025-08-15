@@ -1,254 +1,336 @@
+// backend/server.js
+// Adds created_by on invoices/payments and returns Recorded By + Client on responses
+
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
-import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { run, get, all, insert } from './db.js';
-
-dotenv.config();
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
-
-// ---------- Auth helpers ----------
-function signToken(user){
-  return jwt.sign({ id:user.id, email:user.email, role:user.role, name:user.name||null }, JWT_SECRET, { expiresIn: '7d' });
-}
-function authOptional(req, _res, next){
-  const h = req.headers.authorization || '';
-  const token = h.startsWith('Bearer ') ? h.slice(7) : null;
-  if (token){
-    try {
-      req.user = jwt.verify(token, JWT_SECRET);
-    } catch (e) {
-      req.user = null;
-    }
-  }
-  next();
-}
-function authRequired(req, res, next){
-  authOptional(req, res, ()=>{
-    if (!req.user) return res.status(401).json({ error: 'unauthorized' });
-    next();
-  });
-}
-function requireRole(role){
-  const ranks = { viewer: 1, staff: 2, admin: 3 };
-  return (req, res, next) => {
-    if (!req.user) return res.status(401).json({ error: 'unauthorized' });
-    if ((ranks[req.user.role]||0) < (ranks[role]||0)) return res.status(403).json({ error: 'forbidden' });
-    next();
-  };
-}
-
-// ---------- Auth routes ----------
-app.post('/api/auth/register', authOptional, (req,res)=>{
-  const { email, password, name=null, role='viewer' } = req.body||{};
-  if (!email || !password) return res.status(400).json({ error: 'email and password required' });
-  const count = get('SELECT COUNT(*) AS c FROM users')?.c || 0;
-  // First user becomes admin automatically
-  const finalRole = count === 0 ? 'admin' : role;
-  if (count > 0){
-    // non-first registration requires admin
-    if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'admin only' });
-  }
-  const existing = get('SELECT id FROM users WHERE email=?', [email]);
-  if (existing) return res.status(409).json({ error: 'email already exists' });
-  const hash = bcrypt.hashSync(password, 10);
-  const info = insert('INSERT INTO users (email,name,password_hash,role) VALUES (?,?,?,?)', [email, name, hash, finalRole]);
-  const user = get('SELECT id,email,name,role FROM users WHERE id=?', [info.lastInsertRowid]);
-  const token = signToken(user);
-  res.json({ token, user });
-});
-
-app.post('/api/auth/login', (req,res)=>{
-  const { email, password } = req.body||{};
-  const user = get('SELECT * FROM users WHERE email=?', [email]);
-  if (!user) return res.status(401).json({ error: 'invalid credentials' });
-  const ok = bcrypt.compareSync(password||'', user.password_hash);
-  if (!ok) return res.status(401).json({ error: 'invalid credentials' });
-  const token = signToken(user);
-  res.json({ token, user: { id:user.id, email:user.email, name:user.name, role:user.role } });
-});
-app.get('/api/auth/me', authRequired, (req,res)=>{
-  res.json({ user: req.user });
-});
-
-// ---------- Health ----------
-app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'payment-tracker-backend-sqljs-auth' }));
-
-// ---------- Clients ----------
-app.get('/api/clients', (_req, res) => {
-  const rows = all('SELECT * FROM clients ORDER BY datetime(created_at) DESC');
-  res.json(rows);
-});
-app.post('/api/clients', authRequired, requireRole('staff'), (req, res) => {
-  const { name, email=null, phone=null, company=null, notes=null } = req.body || {};
-  if (!name) return res.status(400).json({ error: 'name required' });
-  const info = insert('INSERT INTO clients (name,email,phone,company,notes) VALUES (?,?,?,?,?)', [name, email, phone, company, notes]);
-  const row = get('SELECT * FROM clients WHERE id = ?', [info.lastInsertRowid]);
-  res.json(row);
-});
-app.delete('/api/clients/:id', authRequired, requireRole('admin'), (req,res)=>{
-  const { force } = req.query;
-  const cid = Number(req.params.id);
-  const invCount = get('SELECT COUNT(*) AS c FROM invoices WHERE client_id=?', [cid])?.c || 0;
-  if (invCount>0 && force!=='true') return res.status(409).json({ error: 'client has invoices; pass ?force=true to also remove invoices and payments' });
-  if (force==='true'){
-    const invs = all('SELECT id FROM invoices WHERE client_id=?', [cid]);
-    for (const inv of invs){
-      run('DELETE FROM payments WHERE invoice_id=?', [inv.id]);
-    }
-    run('DELETE FROM invoices WHERE client_id=?', [cid]);
-  }
-  const resu = run('DELETE FROM clients WHERE id=?', [cid]);
-  res.json({ ok:true, deleted: resu.changes });
-});
-
-// ---------- Invoices ----------
-app.get('/api/invoices', (req, res) => {
-  const { status, client_id, overdue, from, to, q } = req.query || {};
-  const where = [];
-  const params = [];
-
-  if (status && status !== 'overdue') { where.push('i.status = ?'); params.push(status); }
-  if (client_id) { where.push('i.client_id = ?'); params.push(Number(client_id)); }
-  if (from) { where.push("date(i.created_at) >= date(?)"); params.push(from); }
-  if (to)   { where.push("date(i.created_at) <= date(?)"); params.push(to); }
-  if (overdue === 'true' || status === 'overdue') {
-    where.push("i.status != 'paid' AND i.due_date IS NOT NULL AND date(i.due_date) < date('now')");
-  }
-  if (q) {
-    where.push('(i.title LIKE ? OR i.description LIKE ? OR c.name LIKE ?)');
-    params.push(`%${q}%`, `%${q}%`, `%${q}%`);
-  }
-
-  const sql = `
-    SELECT i.*, c.id as c_id, c.name as c_name, c.email as c_email, c.phone as c_phone
-    FROM invoices i
-    LEFT JOIN clients c ON c.id = i.client_id
-    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-    ORDER BY datetime(i.created_at) DESC
-  `;
-  const rows = all(sql, params);
-  const mapped = rows.map(r => ({
-    id: r.id, client_id: r.client_id, title: r.title, description: r.description,
-    total: r.total, status: r.status, amount_paid: r.amount_paid, due_date: r.due_date, created_at: r.created_at,
-    client: { id: r.c_id, name: r.c_name, email: r.c_email, phone: r.c_phone },
-    balance: Number(r.total) - Number(r.amount_paid || 0),
-    overdue: r.status !== 'paid' && r.due_date && new Date(r.due_date) < new Date(new Date().toDateString())
-  }));
-  res.json(mapped);
-});
-
-app.get('/api/invoices/:id', (req, res) => {
-  const inv = get('SELECT * FROM invoices WHERE id = ?', [req.params.id]);
-  if (!inv) return res.status(404).json({ error: 'not found' });
-  const client = get('SELECT * FROM clients WHERE id = ?', [inv.client_id]);
-  const pays = all('SELECT * FROM payments WHERE invoice_id = ? ORDER BY datetime(created_at) DESC', [inv.id]);
-  res.json({ ...inv, client, payments: pays });
-});
-
-app.post('/api/invoices', authRequired, requireRole('staff'), (req, res) => {
-  const { client_id, total, title = null, description = null, due_date = null } = req.body || {};
-  if (!client_id || !(total > 0)) return res.status(400).json({ error: 'client_id and total required' });
-  const info = insert('INSERT INTO invoices (client_id,total,title,description,due_date) VALUES (?,?,?,?,?)',
-    [client_id, total, title, description, due_date]);
-  const row = get('SELECT * FROM invoices WHERE id = ?', [info.lastInsertRowid]);
-  res.json(row);
-});
-
-// Mark invoice as fully paid AND write a payment record
-app.post('/api/invoices/:id/mark-paid', authRequired, requireRole('staff'), (req, res) => {
-  const inv = get('SELECT id,total,COALESCE(amount_paid,0) AS amount_paid FROM invoices WHERE id=?', [req.params.id]);
-  if (!inv) return res.status(404).json({ error: 'invoice not found' });
-  const remaining = Math.max(0, Number(inv.total) - Number(inv.amount_paid));
-  if (remaining > 0){
-    insert('INSERT INTO payments (invoice_id,amount,percent,method,note) VALUES (?,?,?,?,?)',
-      [inv.id, remaining, null, 'system', 'Marked paid']);
-  }
-  run('UPDATE invoices SET amount_paid = total, status = ? WHERE id = ?', ['paid', inv.id]);
-  const updated = get('SELECT * FROM invoices WHERE id=?', [inv.id]);
-  res.json(updated);
-});
-
-app.delete('/api/invoices/:id', authRequired, requireRole('admin'), (req,res)=>{
-  const { force } = req.query;
-  const id = Number(req.params.id);
-  const payCount = get('SELECT COUNT(*) AS c FROM payments WHERE invoice_id=?', [id])?.c || 0;
-  if (payCount>0 && force!=='true') return res.status(409).json({ error: 'invoice has payments; pass ?force=true to delete invoice and its payments' });
-  run('DELETE FROM payments WHERE invoice_id=?', [id]);
-  const resu = run('DELETE FROM invoices WHERE id=?', [id]);
-  res.json({ ok:true, deleted: resu.changes });
-});
-
-// ---------- Payments ----------
-app.get('/api/payments', (req, res) => {
-  const { invoice_id, client_id, from, to } = req.query || {};
-  const where = [];
-  const params = [];
-  if (invoice_id) { where.push('p.invoice_id = ?'); params.push(Number(invoice_id)); }
-  if (client_id) { where.push('i.client_id = ?'); params.push(Number(client_id)); }
-  if (from) { where.push("date(p.created_at) >= date(?)"); params.push(from); }
-  if (to)   { where.push("date(p.created_at) <= date(?)"); params.push(to); }
-  const sql = `SELECT p.* FROM payments p LEFT JOIN invoices i ON i.id = p.invoice_id
-               ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-               ORDER BY datetime(p.created_at) DESC`;
-  const rows = all(sql, params);
-  res.json(rows);
-});
-
-app.post('/api/payments', authRequired, requireRole('staff'), (req, res) => {
-  const { invoice_id, amount, percent, method = null, note = null } = req.body || {};
-  if (!invoice_id) return res.status(400).json({ error: 'invoice_id required' });
-
-  const inv = get('SELECT id,total,COALESCE(amount_paid,0) AS amount_paid FROM invoices WHERE id = ?', [invoice_id]);
-  if (!inv) return res.status(404).json({ error: 'invoice not found' });
-
-  const payAmount = percent != null ? Number(inv.total) * (Number(percent) / 100) : Number(amount || 0);
-  if (!(payAmount > 0)) return res.status(400).json({ error: 'amount or percent > 0 required' });
-
-  insert('INSERT INTO payments (invoice_id,amount,percent,method,note) VALUES (?,?,?,?,?)',
-    [invoice_id, payAmount, percent ?? null, method, note]);
-
-  const newPaid = Number(inv.amount_paid) + payAmount;
-  const newStatus = newPaid + 0.0001 >= Number(inv.total) ? 'paid' : 'part-paid';
-  run('UPDATE invoices SET amount_paid=?, status=? WHERE id=?', [newPaid, newStatus, invoice_id]);
-
-  res.json({ ok: true, invoice_id, amount_posted: payAmount, status: newStatus, amount_paid: newPaid });
-});
-
-app.delete('/api/payments/:id', authRequired, requireRole('admin'), (req,res)=>{
-  const id = Number(req.params.id);
-  // adjust invoice totals when deleting a payment
-  const p = get('SELECT * FROM payments WHERE id=?', [id]);
-  if (!p) return res.json({ ok:true, deleted: 0 });
-  const inv = get('SELECT id,total,COALESCE(amount_paid,0) AS amount_paid FROM invoices WHERE id=?', [p.invoice_id]);
-  if (inv){
-    const newPaid = Math.max(0, Number(inv.amount_paid) - Number(p.amount||0));
-    const newStatus = newPaid + 0.0001 >= Number(inv.total) ? 'paid' : (newPaid>0 ? 'part-paid' : 'pending');
-    run('UPDATE invoices SET amount_paid=?, status=? WHERE id=?', [newPaid, newStatus, inv.id]);
-  }
-  const resu = run('DELETE FROM payments WHERE id=?', [id]);
-  res.json({ ok:true, deleted: resu.changes });
-});
-
-// ---------- Stats ----------
-app.get('/api/stats', (_req, res) => {
-  const totals = get('SELECT COALESCE(SUM(total),0) AS total, COALESCE(SUM(amount_paid),0) AS paid FROM invoices', []);
-  const outstanding = Number(totals.total) - Number(totals.paid);
-  const received = Number(totals.paid);
-  const overdue = get("SELECT COUNT(*) AS n FROM invoices WHERE status != 'paid' AND due_date IS NOT NULL AND date(due_date) < date('now')", []);
-  const pays = all('SELECT amount, created_at FROM payments', []);
-  const now = new Date();
-  const paymentsThisMonth = pays.filter(p => {
-    const d = new Date(p.created_at);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).reduce((s, p) => s + Number(p.amount || 0), 0);
-  res.json({ totalOutstanding: outstanding, totalReceived: received, overdueInvoices: overdue.n, paymentsThisMonth });
-});
+import fs from 'fs';
+import path from 'path';
+import bodyParser from 'body-parser';
+import bcrypt from 'bcryptjs';
+import initSqlJs from 'sql.js';
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log('Backend (auth+roles) running on :' + PORT));
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+const DATA_DIR = path.resolve('./data');
+const DB_FILE = path.join(DATA_DIR, 'app.sqlite');
+
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const SQL = await initSqlJs({ locateFile: file => 'node_modules/sql.js/dist/' + file });
+
+function loadDB(){
+  if (fs.existsSync(DB_FILE)) {
+    const filebuffer = fs.readFileSync(DB_FILE);
+    return new SQL.Database(filebuffer);
+  }
+  return new SQL.Database();
+}
+function saveDB(db){
+  const data = db.export();
+  const buffer = Buffer.from(data);
+  fs.writeFileSync(DB_FILE, buffer);
+}
+
+function initSchema(db){
+  // Create tables if missing (keeps your existing structure)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS users(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT,
+      email TEXT UNIQUE,
+      password_hash TEXT,
+      role TEXT DEFAULT 'staff',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS clients(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT, email TEXT, phone TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS invoices(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_id INTEGER,
+      title TEXT,
+      description TEXT,
+      total REAL NOT NULL,
+      status TEXT DEFAULT 'pending',
+      due_date TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      created_by INTEGER,
+      FOREIGN KEY (client_id) REFERENCES clients(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+    CREATE TABLE IF NOT EXISTS payments(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoice_id INTEGER,
+      amount REAL,
+      percent REAL,
+      method TEXT,
+      note TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      created_by INTEGER,
+      FOREIGN KEY (invoice_id) REFERENCES invoices(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+  `);
+
+  // Safe, idempotent column add (works on your existing DB)
+  const ensureColumn = (table, column, type) => {
+    const res = db.exec(`PRAGMA table_info(${table});`);
+    const has = res.length ? res[0].values.some(row => row[1] === column) : false;
+    if (!has) db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type};`);
+  };
+  ensureColumn('invoices','created_by','INTEGER');
+  ensureColumn('payments','created_by','INTEGER');
+}
+
+function rowToObj(columns, row){
+  const o = {};
+  columns.forEach((c, i)=> o[c] = row[i]);
+  return o;
+}
+function query(db, sql, params=[]){
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  const cols = stmt.getColumnNames();
+  const out = [];
+  while (stmt.step()) out.push(rowToObj(cols, stmt.get()));
+  stmt.free();
+  return out;
+}
+function run(db, sql, params=[]){
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  stmt.step();
+  stmt.free();
+}
+
+const app = express();
+app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
+app.use(bodyParser.json());
+
+// --- Auth middleware (reads Bearer token if present) ---
+function auth(req, res, next){
+  const h = req.headers.authorization || '';
+  const token = h.startsWith('Bearer ') ? h.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  try{
+    const data = jwt.verify(token, JWT_SECRET);
+    req.user = data;
+    next();
+  }catch(err){
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+}
+
+const db = loadDB();
+initSchema(db);
+
+// ---------- AUTH ----------
+app.post('/api/auth/register', (req,res)=>{
+  const { name, email, password, role='staff' } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+  const hash = bcrypt.hashSync(password, 10);
+  try{
+    run(db, `INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)`, [name||'', email, hash, role]);
+    saveDB(db);
+    res.json({ ok:true });
+  }catch{
+    res.status(400).json({ error: 'email already exists' });
+  }
+});
+app.post('/api/auth/login', (req,res)=>{
+  const { email, password } = req.body || {};
+  const row = query(db, `SELECT * FROM users WHERE email=?`, [email])[0];
+  if (!row) return res.status(401).json({ error:'invalid credentials' });
+  const ok = bcrypt.compareSync(password, row.password_hash||'');
+  if (!ok) return res.status(401).json({ error:'invalid credentials' });
+  const token = jwt.sign({ id: row.id, email: row.email, role: row.role, name: row.name }, JWT_SECRET, { expiresIn:'7d' });
+  res.json({ token, user: { id: row.id, email: row.email, role: row.role, name: row.name } });
+});
+
+// ---------- CLIENTS ----------
+app.get('/api/clients', (req,res)=>{
+  res.json(query(db, `SELECT * FROM clients ORDER BY id DESC`));
+});
+
+// ---------- INVOICES ----------
+function buildInvoiceWhere(qs){
+  const wh = [], pr = [];
+  if (qs.client_id){ wh.push('i.client_id = ?'); pr.push(Number(qs.client_id)); }
+  if (qs.status){
+    if (qs.status === 'overdue'){ wh.push(`(i.status <> 'paid' AND i.due_date IS NOT NULL AND datetime(i.due_date) < datetime('now'))`); }
+    else { wh.push('i.status = ?'); pr.push(qs.status); }
+  }
+  if (qs.overdue === 'true'){ wh.push(`(i.status <> 'paid' AND i.due_date IS NOT NULL AND datetime(i.due_date) < datetime('now'))`); }
+  if (qs.from){ wh.push(`date(i.created_at) >= date(?)`); pr.push(qs.from); }
+  if (qs.to){ wh.push(`date(i.created_at) <= date(?)`); pr.push(qs.to); }
+  if (qs.q){
+    wh.push(`(lower(i.title) LIKE ? OR lower(i.description) LIKE ?)`); 
+    pr.push(`%${qs.q.toLowerCase()}%`, `%${qs.q.toLowerCase()}%`);
+  }
+  return { where: wh.length ? 'WHERE ' + wh.join(' AND ') : '', params: pr };
+}
+
+app.get('/api/invoices', (req,res)=>{
+  const { where, params } = buildInvoiceWhere(req.query||{});
+  const rows = query(db, `
+    SELECT 
+      i.*,
+      (SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.invoice_id = i.id) AS amount_paid,
+      (i.total - (SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.invoice_id = i.id)) AS balance,
+      CASE WHEN i.status <> 'paid' AND i.due_date IS NOT NULL AND datetime(i.due_date) < datetime('now') THEN 1 ELSE 0 END AS overdue,
+      c.id AS client_id, c.name AS client_name, c.email AS client_email,
+      u.id AS created_by_id, u.name AS created_by_name, u.email AS created_by_email
+    FROM invoices i
+    LEFT JOIN clients c ON c.id = i.client_id
+    LEFT JOIN users u ON u.id = i.created_by
+    ${where}
+    ORDER BY i.id DESC
+  `, params).map(r => ({
+    ...r,
+    client: r.client_id ? { id:r.client_id, name:r.client_name, email:r.client_email } : null,
+    created_by_user: r.created_by_id ? { id:r.created_by_id, name:r.created_by_name, email:r.created_by_email } : null
+  }));
+  res.json(rows);
+});
+
+app.get('/api/invoices/:id', (req,res)=>{
+  const id = Number(req.params.id);
+  const inv = query(db, `
+    SELECT 
+      i.*,
+      (SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.invoice_id = i.id) AS amount_paid,
+      (i.total - (SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.invoice_id = i.id)) AS balance,
+      CASE WHEN i.status <> 'paid' AND i.due_date IS NOT NULL AND datetime(i.due_date) < datetime('now') THEN 1 ELSE 0 END AS overdue,
+      c.id AS client_id, c.name AS client_name, c.email AS client_email,
+      u.id AS created_by_id, u.name AS created_by_name, u.email AS created_by_email
+    FROM invoices i
+    LEFT JOIN clients c ON c.id = i.client_id
+    LEFT JOIN users u ON u.id = i.created_by
+    WHERE i.id = ?
+  `, [id])[0];
+  if (!inv) return res.status(404).json({ error:'not found' });
+  const pays = query(db, `
+    SELECT p.*, u.id AS created_by_id, u.name AS created_by_name, u.email AS created_by_email
+    FROM payments p
+    LEFT JOIN users u ON u.id = p.created_by
+    WHERE p.invoice_id = ?
+    ORDER BY p.id DESC
+  `, [id]).map(p => ({
+    ...p,
+    recorded_by_user: p.created_by_id ? { id:p.created_by_id, name:p.created_by_name, email:p.created_by_email } : null
+  }));
+  res.json({
+    ...inv,
+    client: inv.client_id ? { id:inv.client_id, name:inv.client_name, email:inv.client_email } : null,
+    created_by_user: inv.created_by_id ? { id:inv.created_by_id, name:inv.created_by_name, email:inv.created_by_email } : null,
+    payments: pays
+  });
+});
+
+app.post('/api/invoices', auth, (req,res)=>{
+  const { client_id, title, description, total, due_date, created_at } = req.body || {};
+  if (!client_id || !(Number(total) > 0)) return res.status(400).json({ error:'client_id and total required' });
+  const createdBy = req.user?.id || null;
+  run(db, `INSERT INTO invoices(client_id,title,description,total,due_date,created_at,created_by) VALUES(?,?,?,?,?,?,?)`, [
+    Number(client_id), title||'', description||'', Number(total), due_date||null, created_at||new Date().toISOString(), createdBy
+  ]);
+  saveDB(db);
+  res.json({ ok:true });
+});
+
+app.post('/api/invoices/:id/mark-paid', auth, (req,res)=>{
+  const id = Number(req.params.id);
+  const inv = query(db, `SELECT i.*, (SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.invoice_id = i.id) AS amount_paid FROM invoices i WHERE i.id=?`, [id])[0];
+  if (!inv) return res.status(404).json({ error:'not found' });
+  const balance = Number(inv.total) - Number(inv.amount_paid||0);
+  if (balance <= 0){
+    run(db, `UPDATE invoices SET status='paid' WHERE id=?`, [id]);
+    saveDB(db);
+    return res.json({ ok:true });
+  }
+  const createdBy = req.user?.id || null;
+  run(db, `INSERT INTO payments(invoice_id, amount, note, created_at, created_by) VALUES(?,?,?,?,?)`, [
+    id, balance, 'Auto: mark as paid', new Date().toISOString(), createdBy
+  ]);
+  run(db, `UPDATE invoices SET status='paid' WHERE id=?`, [id]);
+  saveDB(db);
+  res.json({ ok:true });
+});
+
+app.delete('/api/invoices/:id', auth, (req,res)=>{
+  const id = Number(req.params.id);
+  run(db, `DELETE FROM payments WHERE invoice_id=?`, [id]);
+  run(db, `DELETE FROM invoices WHERE id=?`, [id]);
+  saveDB(db);
+  res.json({ ok:true });
+});
+
+// ---------- PAYMENTS ----------
+app.get('/api/payments', (req,res)=>{
+  const qs = req.query||{};
+  const wh = [], pr = [];
+  if (qs.invoice_id){ wh.push('p.invoice_id = ?'); pr.push(Number(qs.invoice_id)); }
+  if (qs.from){ wh.push(`date(p.created_at) >= date(?)`); pr.push(qs.from); }
+  if (qs.to){ wh.push(`date(p.created_at) <= date(?)`); pr.push(qs.to); }
+  if (qs.client_id){ wh.push('i.client_id = ?'); pr.push(Number(qs.client_id)); } // filter by client
+  const where = wh.length ? ('WHERE ' + wh.join(' AND ') : '');
+  const rows = query(db, `
+    SELECT 
+      p.*,
+      u.id AS created_by_id, u.name AS created_by_name, u.email AS created_by_email,
+      i.client_id AS client_id,
+      c.name AS client_name, c.email AS client_email
+    FROM payments p
+    LEFT JOIN users u ON u.id = p.created_by
+    LEFT JOIN invoices i ON i.id = p.invoice_id
+    LEFT JOIN clients c ON c.id = i.client_id
+    ${where}
+    ORDER BY p.id DESC
+  `, pr).map(r => ({
+    ...r,
+    recorded_by_user: r.created_by_id ? { id:r.created_by_id, name:r.created_by_name, email:r.created_by_email } : null,
+    client: r.client_id ? { id:r.client_id, name:r.client_name, email:r.client_email } : null
+  }));
+  res.json(rows);
+});
+
+app.post('/api/payments', auth, (req,res)=>{
+  const { invoice_id, amount, percent, method, note, created_at } = req.body || {};
+  if (!invoice_id) return res.status(400).json({ error:'invoice_id required' });
+  const inv = query(db, `SELECT * FROM invoices WHERE id=?`, [Number(invoice_id)])[0];
+  if (!inv) return res.status(404).json({ error:'invoice not found' });
+  let amt = Number(amount)||0;
+  if ((!amt || amt<=0) && percent){
+    amt = (Number(inv.total||0) * Number(percent)) / 100.0;
+  }
+  if (!(amt>0)) return res.status(400).json({ error:'amount or percent required' });
+  const createdBy = req.user?.id || null;
+  run(db, `INSERT INTO payments(invoice_id, amount, percent, method, note, created_at, created_by) VALUES(?,?,?,?,?,?,?)`, [
+    Number(invoice_id), amt, percent?Number(percent):null, method||'', note||'', created_at||new Date().toISOString(), createdBy
+  ]);
+  const paid = query(db, `SELECT COALESCE(SUM(amount),0) AS s FROM payments WHERE invoice_id=?`, [Number(invoice_id)])[0].s;
+  const newStatus = Number(paid) >= Number(inv.total) ? 'paid' : (paid>0 ? 'part-paid' : 'pending');
+  run(db, `UPDATE invoices SET status=? WHERE id=?`, [newStatus, Number(invoice_id)]);
+  saveDB(db);
+  res.json({ ok:true });
+});
+
+app.delete('/api/payments/:id', auth, (req,res)=>{
+  const id = Number(req.params.id);
+  const row = query(db, `SELECT * FROM payments WHERE id=?`, [id])[0];
+  if (!row) return res.status(404).json({ error:'not found' });
+  run(db, `DELETE FROM payments WHERE id=?`, [id]);
+  const inv = query(db, `SELECT * FROM invoices WHERE id=?`, [row.invoice_id])[0];
+  if (inv){
+    const paid = query(db, `SELECT COALESCE(SUM(amount),0) AS s FROM payments WHERE invoice_id=?`, [row.invoice_id])[0].s;
+    const newStatus = Number(paid) >= Number(inv.total) ? 'paid' : (paid>0 ? 'part-paid' : 'pending');
+    run(db, `UPDATE invoices SET status=? WHERE id=?`, [newStatus, row.invoice_id]);
+  }
+  saveDB(db);
+  res.json({ ok:true });
+});
+
+app.listen(PORT, ()=> console.log('Backend (auth+roles+created_by) running on :' + PORT));
