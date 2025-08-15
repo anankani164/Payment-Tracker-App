@@ -1,13 +1,18 @@
-export function setToken(t){ localStorage.setItem('token', t); }
-export function getToken(){ return localStorage.getItem('token'); }
-export function clearToken(){ localStorage.removeItem('token'); }
-
-export async function apiFetch(url, options = {}){
-  const opts = { ...options, headers: { ...(options.headers||{}) } };
-  if (opts.body && !opts.headers['Content-Type']) opts.headers['Content-Type'] = 'application/json';
-  const t = getToken();
-  if (t) opts.headers['Authorization'] = `Bearer ${t}`;
-  const res = await fetch(url, opts);
-  if (res.status === 401) throw new Error('Unauthorized (please login)');
-  return res;
+/**
+ * Minimal helper to send JSON requests with JWT automatically.
+ * Looks for 'token' in localStorage (set on login).
+ */
+export function apiFetch(url, options = {}) {
+  const token = localStorage.getItem('token');
+  const headers = {
+    ...(options.headers || {}),
+  };
+  // Set JSON header if a body exists and caller didn't set content type
+  if (options.body && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return fetch(url, { ...options, headers });
 }
