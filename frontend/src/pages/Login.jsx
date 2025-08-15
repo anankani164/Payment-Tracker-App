@@ -1,50 +1,50 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { apiFetch, setToken, clearToken } from '../utils/api';
+import { useNavigate, Link } from 'react-router-dom';
+import { apiFetch } from '../utils/api';
+import logoUrl from '../assets/logo.png';
 
 export default function Login(){
-  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   async function submit(e){
     e.preventDefault();
-    setLoading(true);
+    setLoading(true); setError('');
     try{
-      const res = await apiFetch('/api/auth/login', {
+      const r = await fetch('/api/auth/login', {
         method:'POST',
+        headers:{ 'Content-Type':'application/json' },
         body: JSON.stringify({ email, password })
       });
-      const data = await res.json();
-      if(!res.ok || !data?.token){
-        throw new Error(data?.error || 'Login failed');
-      }
-      // Persist token + user so other pages (Clients) can send Authorization header
-      setToken(data.token, data.user);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error || 'Login failed');
+      localStorage.setItem('token', d.token); // generic token key
       navigate('/');
     }catch(err){
-      alert(err.message || 'Login failed');
-      clearToken();
+      setError(err.message || 'Login failed');
     }finally{
       setLoading(false);
     }
   }
 
   return (
-    <div style={{maxWidth:380, margin:'40px auto'}}>
-      <h1 className="page-title">Login</h1>
-      <div className="card">
-        <form onSubmit={submit}>
-          <div style={{display:'grid', gap:12}}>
-            <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required />
-            <input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required />
-          </div>
-          <div style={{display:'flex', gap:8, justifyContent:'flex-end', marginTop:12}}>
-            <button type="submit" className="btn" disabled={loading}>{loading?'Signing in…':'Login'}</button>
-          </div>
-        </form>
+    <div className="auth-card card">
+      <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:12}}>
+        <img src={logoUrl} alt="Logo" style={{height:28}} />
+        <h1 className="auth-title" style={{margin:0}}>Welcome back</h1>
       </div>
+      {error && <div className="muted" style={{color:'#b91c1c', marginBottom:10}}>Error: {error}</div>}
+      <form onSubmit={submit} style={{display:'grid', gap:10}}>
+        <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required />
+        <input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required />
+        <div className="auth-actions">
+          <button className="btn" disabled={loading}>{loading?'Signing in…':'Login'}</button>
+          <Link className="btn secondary" to="/register">Register</Link>
+        </div>
+      </form>
     </div>
   );
 }

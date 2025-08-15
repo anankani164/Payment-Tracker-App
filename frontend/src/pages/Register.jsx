@@ -1,45 +1,51 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { apiFetch } from '../utils/api';
-import { setToken } from '../utils/api';
+import { useNavigate, Link } from 'react-router-dom';
+import logoUrl from '../assets/logo.png';
 
 export default function Register(){
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  async function onSubmit(e){
+  async function submit(e){
     e.preventDefault();
-    setError('');
+    setLoading(true); setError('');
     try{
-      const r = await apiFetch('/api/auth/register', {
-        method: 'POST',
-        body: JSON.stringify({ email, password, name })
+      const r = await fetch('/api/auth/register', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ name, email, password, role:'admin' })
       });
-      const data = await r.json();
-      if(!r.ok) throw new Error(data?.error || 'Registration failed');
-      // Save token and go to dashboard
-      setToken(data.token);
-      navigate('/');
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error || 'Register failed');
+      // Optional: auto login? For now, go to login.
+      navigate('/login');
     }catch(err){
-      setError(err.message);
+      setError(err.message || 'Register failed');
+    }finally{
+      setLoading(false);
     }
   }
 
   return (
-    <div className="card" style={{maxWidth:420, margin:'40px auto'}}>
-      <h2 style={{marginTop:0}}>Create your account</h2>
-      <p className="muted" style={{marginTop:-6, marginBottom:12}}>The first account becomes <b>admin</b> automatically.</p>
-      <form onSubmit={onSubmit} style={{display:'grid', gap:10}}>
-        <input type="text" placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
+    <div className="auth-card card">
+      <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:12}}>
+        <img src={logoUrl} alt="Logo" style={{height:28}} />
+        <h1 className="auth-title" style={{margin:0}}>Create account</h1>
+      </div>
+      {error && <div className="muted" style={{color:'#b91c1c', marginBottom:10}}>Error: {error}</div>}
+      <form onSubmit={submit} style={{display:'grid', gap:10}}>
+        <input placeholder="Name" value={name} onChange={e=>setName(e.target.value)} required />
         <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required />
         <input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required />
-        <button className="btn">Register</button>
+        <div className="auth-actions">
+          <button className="btn" disabled={loading}>{loading?'Creating…':'Register'}</button>
+          <Link className="btn secondary" to="/login">Back to Login</Link>
+        </div>
       </form>
-      {error && <p style={{color:'crimson', marginTop:10}}>{error}</p>}
-      <p className="muted" style={{marginTop:10}}>Already have an account? <a href="/login">Sign in</a></p>
     </div>
   );
 }
