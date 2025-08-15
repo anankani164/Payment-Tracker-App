@@ -1,5 +1,6 @@
 // backend/server.js
 // Adds created_by on invoices/payments and returns Recorded By + Client on responses
+// Also FIX: implement POST /api/clients (and PUT/DELETE) so admins can add clients.
 
 import express from 'express';
 import cors from 'cors';
@@ -124,6 +125,14 @@ function auth(req, res, next){
   }
 }
 
+// Optional role guard (use if you want admin-only)
+// function requireRole(...roles){
+//   return (req,res,next)=>{
+//     if (!req.user || !roles.includes(req.user.role)) return res.status(403).json({error:'forbidden'});
+//     next();
+//   };
+// }
+
 const db = loadDB();
 initSchema(db);
 
@@ -153,6 +162,42 @@ app.post('/api/auth/login', (req,res)=>{
 // ---------- CLIENTS ----------
 app.get('/api/clients', (req,res)=>{
   res.json(query(db, `SELECT * FROM clients ORDER BY id DESC`));
+});
+
+// FIX: Add POST /api/clients to create a client (auth required)
+// If you want to restrict to admin-only, wrap with ", requireRole('admin')"
+app.post('/api/clients', auth, (req,res)=>{
+  const { name, email, phone, created_at } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  try{
+    run(db, `INSERT INTO clients(name,email,phone,created_at) VALUES(?,?,?,?)`, [
+      name, email||'', phone||'', created_at || new Date().toISOString()
+    ]);
+    const id = query(db, `SELECT last_insert_rowid() AS id`)[0].id;
+    saveDB(db);
+    res.json({ ok:true, id });
+  }catch(err){
+    res.status(400).json({ error: 'could not create client' });
+  }
+});
+
+// Optional: update & delete (auth required)
+app.put('/api/clients/:id', auth, (req,res)=>{
+  const id = Number(req.params.id);
+  const { name, email, phone } = req.body || {};
+  const existing = query(db, `SELECT * FROM clients WHERE id=?`, [id])[0];
+  if (!existing) return res.status(404).json({ error:'not found' });
+  run(db, `UPDATE clients SET name=?, email=?, phone=? WHERE id=?`, [
+    name ?? existing.name, email ?? existing.email, phone ?? existing.phone, id
+  ]);
+  saveDB(db);
+  res.json({ ok:true });
+});
+app.delete('/api/clients/:id', auth, (req,res)=>{
+  const id = Number(req.params.id);
+  run(db, `DELETE FROM clients WHERE id=?`, [id]);
+  saveDB(db);
+  res.json({ ok:true });
 });
 
 // ---------- INVOICES ----------
@@ -277,6 +322,7 @@ app.get('/api/payments', (req,res)=>{
   if (qs.to){ wh.push(`date(p.created_at) <= date(?)`); pr.push(qs.to); }
   if (qs.client_id){ wh.push('i.client_id = ?'); pr.push(Number(qs.client_id)); } // filter by client
   const where = wh.length ? ('WHERE ' + wh.join(' AND ')) : '';
+
   const rows = query(db, `
     SELECT 
       p.*,
@@ -333,4 +379,4 @@ app.delete('/api/payments/:id', auth, (req,res)=>{
   res.json({ ok:true });
 });
 
-app.listen(PORT, ()=> console.log('Backend (auth+roles+created_by) running on :' + PORT));
+app.listen(PORT, ()=> console.log('Backend (auth+roles+created_by+clients POST) running on :' + PORT));
