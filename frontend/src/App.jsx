@@ -9,75 +9,78 @@ import ClientStatement from './pages/ClientStatement.jsx';
 import Admin from './pages/Admin.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
-import RequireAuth from './RequireAuth.jsx';
-import { getToken, getUser, clearToken } from './utils/api';
-import { BRAND } from './utils/brand';
-import './ui.css';
+import { getToken, clearToken } from './utils/api';
+import { apiFetch } from './utils/api';
 
 export default function App(){
   const [token, setTokenState] = useState(getToken());
-  const [user, setUser] = useState(getUser());
+  const [user, setUser] = useState(null);
   const navigate = useNavigate();
 
+  // Poll token presence so UI reflects login/logout from other tabs
   useEffect(()=>{
-    const sync = ()=>{ setTokenState(getToken()); setUser(getUser()); };
-    window.addEventListener('storage', sync);
-    window.addEventListener('auth:change', sync);
-    return ()=> { window.removeEventListener('storage', sync); window.removeEventListener('auth:change', sync); };
+    const i = setInterval(()=> setTokenState(getToken()), 1000);
+    return ()=> clearInterval(i);
   },[]);
+
+  // Whenever token exists, fetch /me to get role for badge
+  useEffect(()=>{
+    let cancelled = false;
+    async function fetchMe(){
+      if (!getToken()) { setUser(null); return; }
+      try{
+        const r = await apiFetch('/api/auth/me');
+        const d = await r.json();
+        if (!cancelled) setUser(d?.user || null);
+      }catch{
+        if (!cancelled) setUser(null);
+      }
+    }
+    fetchMe();
+    return ()=>{ cancelled = true; };
+  }, [token]);
 
   function logout(){
     clearToken();
+    setUser(null);
+    setTokenState(null);
     navigate('/login');
   }
 
-  const isAuthed = !!token;
+  const badgeStyle = { padding: '2px 8px', borderRadius: 999, fontSize: 12, background: '#eef2ff', color: '#2d47ff', border: '1px solid #dfe3f6', marginLeft: 8 };
 
   return (
-    <div className="shell">
+    <div>
       <nav className="topnav">
-        <div className="brand">
-          <a href="/" className="brand-link">
-            <img src={BRAND.logoUrl} alt={BRAND.name} className="brand-logo" />
-          </a>
+        <div className="tabs">
+          <NavLink to="/" end>Dashboard</NavLink>
+          <NavLink to="/clients">Clients</NavLink>
+          <NavLink to="/invoices">Invoices</NavLink>
+          <NavLink to="/payments">Payments</NavLink>
+          <NavLink to="/admin">Admin</NavLink>
         </div>
-
-        {isAuthed ? (
-          <div className="tabs">
-            <NavLink to="/" end className={({isActive})=>`tab ${isActive?'active':''}`}>Dashboard</NavLink>
-            <NavLink to="/clients" className={({isActive})=>`tab ${isActive?'active':''}`}>Clients</NavLink>
-            <NavLink to="/invoices" className={({isActive})=>`tab ${isActive?'active':''}`}>Invoices</NavLink>
-            <NavLink to="/payments" className={({isActive})=>`tab ${isActive?'active':''}`}>Payments</NavLink>
-            <NavLink to="/admin" className={({isActive})=>`tab ${isActive?'active':''}`}>Admin</NavLink>
-          </div>
+        {!token ? (
+          <>
+            <NavLink to="/login">Login</NavLink>
+            <NavLink to="/register" style={{marginLeft:8}}>Register</NavLink>
+          </>
         ) : (
-          <div />
+          <>
+            {user && <span className="badge" style={badgeStyle}>{user.role}</span>}
+            <button className="btn small" onClick={logout} style={{marginLeft:8}}>Logout</button>
+          </>
         )}
-
-        <div className="auth">
-          {isAuthed ? (
-            <>
-              <span className="hello">Hi {user?.name || user?.email || 'User'}</span>
-              <button className="btn small" onClick={logout}>Logout</button>
-            </>
-          ) : (
-            <div className="auth-links">
-              <NavLink to="/login" className="btn small outline">Login</NavLink>
-              <NavLink to="/register" className="btn small secondary">Register</NavLink>
-            </div>
-          )}
-        </div>
       </nav>
 
       <main className="container">
         <Routes>
-          <Route path="/" element={<RequireAuth><Dashboard/></RequireAuth>} />
-          <Route path="/clients" element={<RequireAuth><Clients/></RequireAuth>} />
-          <Route path="/clients/:id/statement" element={<RequireAuth><ClientStatement/></RequireAuth>} />
-          <Route path="/invoices" element={<RequireAuth><Invoices/></RequireAuth>} />
-          <Route path="/invoices/:id" element={<RequireAuth><InvoiceDetails/></RequireAuth>} />
-          <Route path="/payments" element={<RequireAuth><Payments/></RequireAuth>} />
-          <Route path="/admin" element={<RequireAuth><Admin/></RequireAuth>} />
+          <Route path="/" element={<Dashboard/>} />
+          <Route path="/clients" element={<Clients/>} />
+          <Route path="/clients/:id/statement" element={<ClientStatement/>} />
+          <Route path="/invoices" element={<Invoices/>} />
+          <Route path="/invoices/:id" element={<InvoiceDetails/>} />
+          <Route path="/payments" element={<Payments/>} />
+          <Route path="/admin" element={<Admin/>} />
           <Route path="/login" element={<Login/>} />
           <Route path="/register" element={<Register/>} />
         </Routes>
