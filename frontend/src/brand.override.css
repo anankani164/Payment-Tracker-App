@@ -1,0 +1,9 @@
+/* brand.override.css
+   Set your own hex values here. This file is imported AFTER brand.css
+   so it overrides the defaults. Edit these three lines to change the UI theme.
+*/
+:root{
+  --brand-primary: #ef4444;     /* primary button/tab color */
+  --brand-primary-ink: #ffffff; /* text on primary */
+  --brand-primary-10: #fee2e2;  /* light red tint for secondary pills / active tabs */
+}
