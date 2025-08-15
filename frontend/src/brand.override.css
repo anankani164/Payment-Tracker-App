@@ -3,7 +3,7 @@
    so it overrides the defaults. Edit these three lines to change the UI theme.
 */
 :root{
-  --brand-primary: #ef4444;     /* primary button/tab color */
+  --brand-primary: #b53737;     /* primary button/tab color */
   --brand-primary-ink: #ffffff; /* text on primary */
-  --brand-primary-10: #fee2e2;  /* light red tint for secondary pills / active tabs */
+  --brand-primary-10: #949494;  /* light red tint for secondary pills / active tabs */
 }
