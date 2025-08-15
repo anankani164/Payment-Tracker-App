@@ -8,74 +8,52 @@ import Payments from './pages/Payments.jsx';
 import Admin from './pages/Admin.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
-import { getToken, clearToken } from './utils/api';
-import { apiFetch } from './utils/api';
+import { getToken, getUser, clearToken } from './utils/api';
 
 export default function App(){
   const [token, setTokenState] = useState(getToken());
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(getUser());
   const navigate = useNavigate();
 
-  // Poll token presence so UI reflects login/logout from other tabs
+  // Stay in sync with storage changes (e.g., other tabs)
   useEffect(()=>{
-    const i = setInterval(()=> setTokenState(getToken()), 1000);
-    return ()=> clearInterval(i);
+    const onStorage = ()=>{ setTokenState(getToken()); setUser(getUser()); };
+    window.addEventListener('storage', onStorage);
+    return ()=> window.removeEventListener('storage', onStorage);
   },[]);
-
-  // Whenever token exists, fetch /me to get role for badge
-  useEffect(()=>{
-    let cancelled = false;
-    async function fetchMe(){
-      if (!getToken()) { setUser(null); return; }
-      try{
-        const r = await apiFetch('/api/auth/me');
-        const d = await r.json();
-        if (!cancelled) setUser(d?.user || null);
-      }catch{
-        if (!cancelled) setUser(null);
-      }
-    }
-    fetchMe();
-    return ()=>{ cancelled = true; };
-  }, [token]);
 
   function logout(){
     clearToken();
+    setTokenState('');
     setUser(null);
-    setTokenState(null);
     navigate('/login');
   }
 
-  const badgeStyle = {
-    padding: '2px 8px',
-    borderRadius: 999,
-    fontSize: 12,
-    background: '#eef2ff',
-    color: '#2d47ff',
-    border: '1px solid #dfe3f6',
-    marginLeft: 8
-  };
+  const isAuthed = !!token;
 
   return (
     <div className="container">
-      <nav className="nav" style={{display:'flex', gap:12, padding:'12px 0', alignItems:'center', flexWrap:'wrap'}}>
-        <NavLink to="/" end>Dashboard</NavLink>
-        <NavLink to="/clients">Clients</NavLink>
-        <NavLink to="/invoices">Invoices</NavLink>
-        <NavLink to="/payments">Payments</NavLink>
-        <NavLink to="/admin">Admin</NavLink>
-        <span style={{marginLeft:'auto'}} />
-        {!token ? (
-          <>
-            <NavLink to="/login">Login</NavLink>
-            <NavLink to="/register">Register</NavLink>
-          </>
-        ) : (
-          <>
-            {user && <span title={user.email} style={badgeStyle}>{user.role}</span>}
-            <button className="btn secondary" onClick={logout}>Logout</button>
-          </>
-        )}
+      <nav className="topnav">
+        <div className="tabs">
+          <NavLink to="/" className={({isActive})=>isActive?'active':''}>Dashboard</NavLink>
+          <NavLink to="/clients" className={({isActive})=>isActive?'active':''}>Clients</NavLink>
+          <NavLink to="/invoices" className={({isActive})=>isActive?'active':''}>Invoices</NavLink>
+          <NavLink to="/payments" className={({isActive})=>isActive?'active':''}>Payments</NavLink>
+          <NavLink to="/admin" className={({isActive})=>isActive?'active':''}>Admin</NavLink>
+        </div>
+        <div className="auth">
+          {isAuthed ? (
+            <>
+              <span className="muted" style={{marginRight:8}}>Hi {user?.name || user?.email || 'User'}</span>
+              <button className="btn small" onClick={logout}>Logout</button>
+            </>
+          ) : (
+            <>
+              <NavLink to="/login" className={({isActive})=>isActive?'active':''}>Login</NavLink>
+              <NavLink to="/register" className={({isActive})=>isActive?'active':''}>Register</NavLink>
+            </>
+          )}
+        </div>
       </nav>
 
       <Routes>
