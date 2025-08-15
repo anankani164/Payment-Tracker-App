@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Money from '../components/Money';
 import { apiFetch } from '../utils/api';
-import { exportCSV, exportPDF } from '../utils/export';
+import { exportCSV, exportPDF, formatMoney } from '../utils/export';
 
 export default function Invoices(){
   const [invoices, setInvoices] = useState([]);
@@ -47,9 +47,7 @@ export default function Invoices(){
     if (body.created_at) {
       const d = new Date(body.created_at);
       if (!isNaN(d)) body.created_at = d.toISOString();
-    } else {
-      delete body.created_at;
-    }
+    } else { delete body.created_at; }
     const r = await apiFetch('/api/invoices', {method:'POST', body: JSON.stringify(body)});
     if(!r.ok) return alert('Failed to add invoice');
     setShow(false); setForm({client_id:'', total:'', title:'', description:'', due_date:'', created_at:''}); load();
@@ -75,9 +73,9 @@ export default function Invoices(){
       'ID': i.id,
       'Client': i.client?.name || '',
       'Title': i.title || '',
-      'Total': i.total,
-      'Paid': i.amount_paid || 0,
-      'Balance': i.balance || 0,
+      'Total': formatMoney(i.total),
+      'Paid': formatMoney(i.amount_paid || 0),
+      'Balance': formatMoney(i.balance || 0),
       'Status': i.status + (i.overdue ? ' (overdue)' : ''),
       'Due Date': i.due_date || '',
       'Created': i.created_at || '',
@@ -99,7 +97,7 @@ export default function Invoices(){
       'Created': i.created_at || '',
       'Recorded By': i.created_by_user?.name || i.created_by_user?.email || ''
     }));
-    exportPDF('invoices.pdf', headers, rows, { title:'Invoices' });
+    exportPDF('invoices.pdf', headers, rows, { title:'Invoices', money:['Total','Paid','Balance'] });
   }
 
   return (

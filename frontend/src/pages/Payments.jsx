@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Money from '../components/Money';
-import { exportCSV, exportPDF } from '../utils/export';
+import { exportCSV, exportPDF, formatMoney } from '../utils/export';
 
 export default function Payments(){
   const [payments, setPayments] = useState([]);
@@ -34,7 +34,7 @@ export default function Payments(){
     const rows = payments.map(p => ({
       'Date': new Date(p.created_at).toLocaleString(),
       'Client': p.client?.name || '',
-      'Amount': p.amount,
+      'Amount': formatMoney(p.amount),
       'Percent': p.percent ?? '',
       'Invoice': p.invoice_id ? `#${p.invoice_id}` : '',
       'Recorded By': p.recorded_by_user?.name || p.recorded_by_user?.email || '',
@@ -55,7 +55,7 @@ export default function Payments(){
       'Method': p.method ?? '',
       'Note': p.note ?? ''
     }));
-    exportPDF('payments.pdf', headers, rows, { title:'Payments' });
+    exportPDF('payments.pdf', headers, rows, { title:'Payments', money:['Amount'] });
   }
 
   return (
