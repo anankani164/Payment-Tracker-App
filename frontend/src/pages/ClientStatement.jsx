@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { downloadCSV, downloadPDF } from '../utils/export';
-import { fmtMoney } from '../utils/format';
 import { apiFetch } from '../utils/api';
+import { exportCSV, exportPDF } from '../utils/export';
 import Money from '../components/Money';
 
 export default function ClientStatement(){
@@ -11,18 +10,18 @@ export default function ClientStatement(){
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(()=>{
+  useEffect(() => {
     let cancelled = false;
     async function load(){
       try{
         const res = await apiFetch(`/api/clients/${encodeURIComponent(id)}/statement`);
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || 'Failed to load');
-        if(!cancelled) setData(json);
+        if (!cancelled) setData(json);
       }catch(e){
-        if(!cancelled) setError(e.message || 'Failed to load');
+        if (!cancelled) setError(e.message || 'Failed to load');
       }finally{
-        if(!cancelled) setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
     load();
@@ -43,10 +42,10 @@ export default function ClientStatement(){
       'Ref': r.ref,
       'Description': r.description || '',
       'Invoice': r.invoice_id ? `#${r.invoice_id}` : '',
-      'Amount': fmtMoney(r.amount, data.currency || 'GHS'),
-      'Running Balance': fmtMoney(r.running, data.currency || 'GHS')
+      'Amount': r.amount,
+      'Running Balance': r.running
     }));
-    downloadCSV(`statement_client_${data.client.id}.csv`, csvRows, headers);
+    exportCSV(`statement_client_${data.client.id}.csv`, headers, csvRows);
   }
 
   function onExportPDF(){
@@ -60,9 +59,10 @@ export default function ClientStatement(){
       'Amount': r.amount,
       'Running Balance': r.running
     }));
-    downloadPDF(`Client Statement — ${data.client.name}`, pdfRows, {
+    exportPDF(`statement_client_${data.client.id}.pdf`, headers, pdfRows, {
+      title: `Client Statement — ${data.client.name}`,
       orientation: 'landscape',
-      money: ['Amount', 'Running Balance']
+      money: ['Amount','Running Balance']
     });
   }
 
