@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Money from '../components/Money';
+import { exportCSV, exportPDF } from '../utils/export';
 
 export default function Payments(){
   const [payments, setPayments] = useState([]);
@@ -28,6 +29,35 @@ export default function Payments(){
   }
   useEffect(()=>{ load(); },[params]);
 
+  function exportPaymentsCSV(){
+    const headers = ['Date','Client','Amount','Percent','Invoice','Recorded By','Method','Note'];
+    const rows = payments.map(p => ({
+      'Date': new Date(p.created_at).toLocaleString(),
+      'Client': p.client?.name || '',
+      'Amount': p.amount,
+      'Percent': p.percent ?? '',
+      'Invoice': p.invoice_id ? `#${p.invoice_id}` : '',
+      'Recorded By': p.recorded_by_user?.name || p.recorded_by_user?.email || '',
+      'Method': p.method ?? '',
+      'Note': p.note ?? ''
+    }));
+    exportCSV('payments.csv', headers, rows);
+  }
+  function exportPaymentsPDF(){
+    const headers = ['Date','Client','Amount','Percent','Invoice','Recorded By','Method','Note'];
+    const rows = payments.map(p => ({
+      'Date': new Date(p.created_at).toLocaleString(),
+      'Client': p.client?.name || '',
+      'Amount': p.amount,
+      'Percent': p.percent ?? '',
+      'Invoice': p.invoice_id ? `#${p.invoice_id}` : '',
+      'Recorded By': p.recorded_by_user?.name || p.recorded_by_user?.email || '',
+      'Method': p.method ?? '',
+      'Note': p.note ?? ''
+    }));
+    exportPDF('payments.pdf', headers, rows, { title:'Payments' });
+  }
+
   return (
     <div>
       <h1 className="page-title">Payments</h1>
@@ -45,6 +75,12 @@ export default function Payments(){
             <button className="btn" onClick={()=>applyFilters()}>Apply</button>
             <button className="btn secondary" onClick={()=>{ setFilters({client_id:'',invoice_id:'',from:'',to:''}); applyFilters({}); }}>Reset</button>
           </div>
+        </div>
+
+        {/* Export buttons */}
+        <div style={{display:'flex', gap:8, marginTop:10, justifyContent:'flex-end'}}>
+          <button className="btn secondary" onClick={exportPaymentsCSV}>Export CSV</button>
+          <button className="btn" onClick={exportPaymentsPDF}>Export PDF</button>
         </div>
       </div>
 

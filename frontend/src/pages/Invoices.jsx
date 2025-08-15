@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Money from '../components/Money';
 import { apiFetch } from '../utils/api';
+import { exportCSV, exportPDF } from '../utils/export';
 
 export default function Invoices(){
   const [invoices, setInvoices] = useState([]);
@@ -68,6 +69,39 @@ export default function Invoices(){
     load();
   }
 
+  function exportInvoicesCSV(){
+    const headers = ['ID','Client','Title','Total','Paid','Balance','Status','Due Date','Created','Recorded By'];
+    const rows = invoices.map(i => ({
+      'ID': i.id,
+      'Client': i.client?.name || '',
+      'Title': i.title || '',
+      'Total': i.total,
+      'Paid': i.amount_paid || 0,
+      'Balance': i.balance || 0,
+      'Status': i.status + (i.overdue ? ' (overdue)' : ''),
+      'Due Date': i.due_date || '',
+      'Created': i.created_at || '',
+      'Recorded By': i.created_by_user?.name || i.created_by_user?.email || ''
+    }));
+    exportCSV('invoices.csv', headers, rows);
+  }
+  function exportInvoicesPDF(){
+    const headers = ['ID','Client','Title','Total','Paid','Balance','Status','Due','Created','Recorded By'];
+    const rows = invoices.map(i => ({
+      'ID': i.id,
+      'Client': i.client?.name || '',
+      'Title': i.title || '',
+      'Total': i.total,
+      'Paid': i.amount_paid || 0,
+      'Balance': i.balance || 0,
+      'Status': i.status + (i.overdue ? ' (overdue)' : ''),
+      'Due': i.due_date || '',
+      'Created': i.created_at || '',
+      'Recorded By': i.created_by_user?.name || i.created_by_user?.email || ''
+    }));
+    exportPDF('invoices.pdf', headers, rows, { title:'Invoices' });
+  }
+
   return (
     <div>
       <h1 className="page-title">Invoices</h1>
@@ -97,6 +131,12 @@ export default function Invoices(){
         <div style={{display:'flex', gap:8, marginTop:10, flexWrap:'wrap'}}>
           <button className="btn" onClick={()=>applyFilters()}>Apply</button>
           <button className="btn secondary" onClick={()=>{ setFilters({status:'',client_id:'',overdue:false,from:'',to:'',q:''}); applyFilters({}); }}>Reset</button>
+
+          {/* Exports */}
+          <div style={{marginLeft:'auto', display:'flex', gap:8}}>
+            <button className="btn secondary" onClick={exportInvoicesCSV}>Export CSV</button>
+            <button className="btn" onClick={exportInvoicesPDF}>Export PDF</button>
+          </div>
         </div>
       </div>
 
