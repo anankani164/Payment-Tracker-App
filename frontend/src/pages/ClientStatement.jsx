@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { downloadCSV, downloadPDF } from '../utils/export';
+import { fmtMoney } from '../utils/format';
 import { apiFetch } from '../utils/api';
 import Money from '../components/Money';
-import { exportCSV, exportPDF } from '../utils/export';
 
 export default function ClientStatement(){
   const { id } = useParams();
@@ -10,20 +11,22 @@ export default function ClientStatement(){
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  useEffect(()=>{
+    let cancelled = false;
     async function load(){
       try{
-        const res = await apiFetch(`/api/clients/${id}/statement`);
+        const res = await apiFetch(`/api/clients/${encodeURIComponent(id)}/statement`);
         const json = await res.json();
-        if (!res.ok) throw new Error(json?.error || 'Failed to load statement');
-        setData(json);
+        if (!res.ok) throw new Error(json?.error || 'Failed to load');
+        if(!cancelled) setData(json);
       }catch(e){
-        setError(e.message || 'Failed to load statement');
+        if(!cancelled) setError(e.message || 'Failed to load');
       }finally{
-        setLoading(false);
+        if(!cancelled) setLoading(false);
       }
     }
     load();
+    return ()=>{ cancelled = true; };
   }, [id]);
 
   if (loading) return <div className="card">Loading…</div>;
@@ -32,23 +35,23 @@ export default function ClientStatement(){
 
   const rows = data.entries || [];
 
-  function exportCSVClick(){
+  function onExportCSV(){
     const headers = ['Date','Type','Ref','Description','Invoice','Amount','Running Balance'];
-    const map = rows.map(r => ({
+    const csvRows = rows.map(r => ({
       'Date': r.date ? new Date(r.date).toLocaleString() : '',
       'Type': r.type,
       'Ref': r.ref,
       'Description': r.description || '',
       'Invoice': r.invoice_id ? `#${r.invoice_id}` : '',
-      'Amount': r.amount,
-      'Running Balance': r.running
+      'Amount': fmtMoney(r.amount, data.currency || 'GHS'),
+      'Running Balance': fmtMoney(r.running, data.currency || 'GHS')
     }));
-    exportCSV(`statement_client_${data.client.id}.csv`, headers, map);
+    downloadCSV(`statement_client_${data.client.id}.csv`, csvRows, headers);
   }
 
-  function exportPDFClick(){
+  function onExportPDF(){
     const headers = ['Date','Type','Ref','Description','Invoice','Amount','Running Balance'];
-    const map = rows.map(r => ({
+    const pdfRows = rows.map(r => ({
       'Date': r.date ? new Date(r.date).toLocaleString() : '',
       'Type': r.type,
       'Ref': r.ref,
@@ -57,10 +60,9 @@ export default function ClientStatement(){
       'Amount': r.amount,
       'Running Balance': r.running
     }));
-    exportPDF(`statement_client_${data.client.id}.pdf`, headers, map, {
-      title: `Client Statement — ${data.client.name}`,
+    downloadPDF(`Client Statement — ${data.client.name}`, pdfRows, {
       orientation: 'landscape',
-      money: ['Amount','Running Balance']
+      money: ['Amount', 'Running Balance']
     });
   }
 
@@ -69,8 +71,8 @@ export default function ClientStatement(){
       <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12}}>
         <h1 style={{margin:0}}>Client Statement — {data.client.name}</h1>
         <div style={{display:'flex', gap:8}}>
-          <button className="btn secondary" onClick={exportCSVClick}>Export CSV</button>
-          <button className="btn" onClick={exportPDFClick}>Export PDF</button>
+          <button className="btn secondary" onClick={onExportCSV}>Export CSV</button>
+          <button className="btn" onClick={onExportPDF}>Export PDF</button>
         </div>
       </div>
 
