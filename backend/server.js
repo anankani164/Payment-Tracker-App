@@ -276,7 +276,7 @@ app.get('/api/payments', (req,res)=>{
   if (qs.from){ wh.push(`date(p.created_at) >= date(?)`); pr.push(qs.from); }
   if (qs.to){ wh.push(`date(p.created_at) <= date(?)`); pr.push(qs.to); }
   if (qs.client_id){ wh.push('i.client_id = ?'); pr.push(Number(qs.client_id)); } // filter by client
-  const where = wh.length ? ('WHERE ' + wh.join(' AND ') : '');
+  const where = wh.length ? ('WHERE ' + wh.join(' AND ')) : '';
   const rows = query(db, `
     SELECT 
       p.*,
