@@ -49,8 +49,8 @@ export default function App(){
             </>
           ) : (
             <div className="auth-links">
-              <NavLink to="/login" className={({isActive})=>`link ${isActive?'active':''}`}>Login</NavLink>
-              <NavLink to="/register" className={({isActive})=>`link ${isActive?'active':''}`}>Register</NavLink>
+              <NavLink to="/login" className="btn small outline">Login</NavLink>
+              <NavLink to="/register" className="btn small secondary">Register</NavLink>
             </div>
           )}
         </div>
