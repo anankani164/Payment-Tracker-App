@@ -10,6 +10,7 @@ import Admin from './pages/Admin.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import { apiFetch } from './utils/api';
+import initBrandFromLogo from './theme/deriveBrandFromLogo.js'; // NEW
 
 import './brand.css';
 import logoUrl from './assets/logo.png';
@@ -61,6 +62,9 @@ export default function App(){
     loadMe();
     return ()=>{ cancelled = true; };
   }, [hasToken]);
+
+  // NEW: derive brand colors from your logo once on load
+  useEffect(() => { initBrandFromLogo(logoUrl); }, []);
 
   function logout(){
     clearAnyToken();
