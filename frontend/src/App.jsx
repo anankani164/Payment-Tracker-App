@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, Route, Routes, useNavigate } from 'react-router-dom';
+import { NavLink, Route, Routes, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import Dashboard from './pages/Dashboard.jsx';
 import Clients from './pages/Clients.jsx';
 import Invoices from './pages/Invoices.jsx';
@@ -9,25 +9,47 @@ import ClientStatement from './pages/ClientStatement.jsx';
 import Admin from './pages/Admin.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
-import { getToken, clearToken } from './utils/api';
 import { apiFetch } from './utils/api';
 
+import './brand.css';
+import logoUrl from './assets/logo.png';
+
+/* Token helpers: avoid tight coupling to utils/api token helpers */
+const TOKEN_KEYS = ['token','auth_token','jwt','access_token'];
+function getAnyToken(){
+  for (const k of TOKEN_KEYS){
+    const v = localStorage.getItem(k);
+    if (v) return v;
+  }
+  return null;
+}
+function clearAnyToken(){
+  for (const k of TOKEN_KEYS) localStorage.removeItem(k);
+}
+
+function RequireAuth({ children }){
+  const loc = useLocation();
+  const token = getAnyToken();
+  if (!token) return <Navigate to="/login" replace state={{ from: loc.pathname }} />;
+  return children;
+}
+
 export default function App(){
-  const [token, setTokenState] = useState(getToken());
   const [user, setUser] = useState(null);
+  const [hasToken, setHasToken] = useState(!!getAnyToken());
   const navigate = useNavigate();
 
-  // Poll token presence so UI reflects login/logout from other tabs
+  // reflect token changes from other tabs
   useEffect(()=>{
-    const i = setInterval(()=> setTokenState(getToken()), 1000);
+    const i = setInterval(()=> setHasToken(!!getAnyToken()), 800);
     return ()=> clearInterval(i);
   },[]);
 
-  // Whenever token exists, fetch /me to get role for badge
+  // fetch /me when we have a token
   useEffect(()=>{
     let cancelled = false;
-    async function fetchMe(){
-      if (!getToken()) { setUser(null); return; }
+    async function loadMe(){
+      if (!getAnyToken()) { setUser(null); return; }
       try{
         const r = await apiFetch('/api/auth/me');
         const d = await r.json();
@@ -36,53 +58,67 @@ export default function App(){
         if (!cancelled) setUser(null);
       }
     }
-    fetchMe();
+    loadMe();
     return ()=>{ cancelled = true; };
-  }, [token]);
+  }, [hasToken]);
 
   function logout(){
-    clearToken();
+    clearAnyToken();
     setUser(null);
-    setTokenState(null);
+    setHasToken(false);
     navigate('/login');
   }
-
-  const badgeStyle = { padding: '2px 8px', borderRadius: 999, fontSize: 12, background: '#eef2ff', color: '#2d47ff', border: '1px solid #dfe3f6', marginLeft: 8 };
 
   return (
     <div>
       <nav className="topnav">
-        <div className="tabs">
-          <NavLink to="/" end>Dashboard</NavLink>
-          <NavLink to="/clients">Clients</NavLink>
-          <NavLink to="/invoices">Invoices</NavLink>
-          <NavLink to="/payments">Payments</NavLink>
-          <NavLink to="/admin">Admin</NavLink>
+        <div style={{display:'flex', alignItems:'center', gap:12}}>
+          <a className="brand" href="/">
+            <img src={logoUrl} alt="Logo" />
+            <span>Payment Tracker</span>
+          </a>
+          {hasToken && (
+            <div className="tabs">
+              <NavLink to="/" end>Dashboard</NavLink>
+              <NavLink to="/clients">Clients</NavLink>
+              <NavLink to="/invoices">Invoices</NavLink>
+              <NavLink to="/payments">Payments</NavLink>
+              <NavLink to="/admin">Admin</NavLink>
+            </div>
+          )}
         </div>
-        {!token ? (
-          <>
-            <NavLink to="/login">Login</NavLink>
-            <NavLink to="/register" style={{marginLeft:8}}>Register</NavLink>
-          </>
-        ) : (
-          <>
-            {user && <span className="badge" style={badgeStyle}>{user.role}</span>}
-            <button className="btn small" onClick={logout} style={{marginLeft:8}}>Logout</button>
-          </>
-        )}
+        <div style={{display:'flex', alignItems:'center', gap:8}}>
+          {!hasToken ? (
+            <>
+              <NavLink to="/login" className="btn secondary">Login</NavLink>
+              <NavLink to="/register" className="btn">Register</NavLink>
+            </>
+          ) : (
+            <>
+              {user && <span className="muted">Hi, {user.name || user.email}</span>}
+              <button className="btn small" onClick={logout}>Logout</button>
+            </>
+          )}
+        </div>
       </nav>
 
       <main className="container">
         <Routes>
-          <Route path="/" element={<Dashboard/>} />
-          <Route path="/clients" element={<Clients/>} />
-          <Route path="/clients/:id/statement" element={<ClientStatement/>} />
-          <Route path="/invoices" element={<Invoices/>} />
-          <Route path="/invoices/:id" element={<InvoiceDetails/>} />
-          <Route path="/payments" element={<Payments/>} />
-          <Route path="/admin" element={<Admin/>} />
+          {/* Public */}
           <Route path="/login" element={<Login/>} />
           <Route path="/register" element={<Register/>} />
+
+          {/* Protected */}
+          <Route path="/" element={<RequireAuth><Dashboard/></RequireAuth>} />
+          <Route path="/clients" element={<RequireAuth><Clients/></RequireAuth>} />
+          <Route path="/clients/:id/statement" element={<RequireAuth><ClientStatement/></RequireAuth>} />
+          <Route path="/invoices" element={<RequireAuth><Invoices/></RequireAuth>} />
+          <Route path="/invoices/:id" element={<RequireAuth><InvoiceDetails/></RequireAuth>} />
+          <Route path="/payments" element={<RequireAuth><Payments/></RequireAuth>} />
+          <Route path="/admin" element={<RequireAuth><Admin/></RequireAuth>} />
+
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to={hasToken ? '/' : '/login'} replace />} />
         </Routes>
       </main>
     </div>
