@@ -4,6 +4,8 @@ import Money from '../components/Money';
 import { apiFetch } from '../utils/api';
 import { exportCSV, exportPDF, formatMoney } from '../utils/export';
 
+const isCleanInt = (v) => /^\d+$/.test(String(v||'').trim());
+
 export default function Invoices(){
   const [invoices, setInvoices] = useState([]);
   const [clients, setClients] = useState([]);
@@ -151,11 +153,14 @@ export default function Invoices(){
           </tr></thead>
           <tbody>
             {invoices.map(inv=> {
-              const cid = inv.client_id || inv.client?.id || inv.clientId;
+              const cidRaw = inv.client_id ?? inv.client?.id ?? inv.clientId ?? null;
+              const cidStr = cidRaw != null ? String(cidRaw).trim() : null;
+              const canLink = cidStr && isCleanInt(cidStr);
+              const label = inv.client?.name || (canLink ? `#${cidStr}` : '');
               return (
               <tr key={inv.id}>
                 <td>{inv.id}</td>
-                <td>{cid ? <Link to={`/clients/${cid}/statement`}>{inv.client?.name||cid}</Link> : (inv.client?.name||'')}</td>
+                <td>{canLink ? <Link to={`/clients/${encodeURIComponent(cidStr)}/statement`}>{label}</Link> : label}</td>
                 <td>{inv.title||''}</td>
                 <td><Money value={inv.total} /></td>
                 <td><Money value={inv.amount_paid||0} /></td>

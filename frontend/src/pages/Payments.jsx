@@ -3,6 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import Money from '../components/Money';
 import { exportCSV, exportPDF, formatMoney } from '../utils/export';
 
+const isCleanInt = (v) => /^\d+$/.test(String(v||'').trim());
+
 export default function Payments(){
   const [payments, setPayments] = useState([]);
   const [clients, setClients] = useState([]);
@@ -91,11 +93,14 @@ export default function Payments(){
           </tr></thead>
           <tbody>
             {payments.map(p=> {
-              const cid = p.client_id || p.client?.id || p.clientId;
+              const cidRaw = p.client_id ?? p.client?.id ?? p.clientId ?? null;
+              const cidStr = cidRaw != null ? String(cidRaw).trim() : null;
+              const canLink = cidStr && isCleanInt(cidStr);
+              const label = p.client?.name || (canLink ? `#${cidStr}` : '');
               return (
               <tr key={p.id}>
                 <td>{new Date(p.created_at).toLocaleString()}</td>
-                <td>{cid ? <Link to={`/clients/${cid}/statement`}>{p.client?.name || cid}</Link> : (p.client?.name || '')}</td>
+                <td>{canLink ? <Link to={`/clients/${encodeURIComponent(cidStr)}/statement`}>{label}</Link> : label}</td>
                 <td><Money value={p.amount} /></td>
                 <td>{p.percent ?? ''}</td>
                 <td>{p.invoice_id ? <Link to={`/invoices/${p.invoice_id}`}>#{p.invoice_id}</Link> : ''}</td>
