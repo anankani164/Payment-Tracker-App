@@ -1,16 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { downloadCSV, downloadPDF } from '../utils/export';
-import { apiFetch } from '../utils/api';
-import { fmtMoney } from '../utils/format';
 import Money from '../components/Money';
+import { apiFetch } from '../utils/api';
 
 export default function Invoices(){
   const [invoices, setInvoices] = useState([]);
   const [clients, setClients] = useState([]);
-  const [show, setShow] = useState(false);
-  const [form, setForm] = useState({client_id:'', total:'', title:'', description:'', due_date:'', created_at:''});
-
   const [params, setParams] = useSearchParams();
   const [filters, setFilters] = useState({
     status: params.get('status') || '',
@@ -20,6 +15,8 @@ export default function Invoices(){
     to: params.get('to') || '',
     q: params.get('q') || ''
   });
+  const [show, setShow] = useState(false);
+  const [form, setForm] = useState({client_id:'', total:'', title:'', description:'', due_date:'', created_at:''});
 
   function applyFilters(newFilters = filters){
     const sp = new URLSearchParams();
@@ -33,8 +30,9 @@ export default function Invoices(){
   async function load(){
     const qs = params.toString();
     const url = '/api/invoices' + (qs ? `?${qs}` : '');
-    setInvoices(await (await fetch(url)).json());
-    setClients(await (await fetch('/api/clients')).json());
+    const inv = await (await fetch(url)).json();
+    const cli = await (await fetch('/api/clients')).json();
+    setInvoices(inv); setClients(cli);
   }
   useEffect(()=>{ load(); },[params]);
 
@@ -68,21 +66,6 @@ export default function Invoices(){
     const data = await r.json();
     if(!r.ok) return alert(data?.error||'Failed to delete');
     load();
-  }
-
-  function exportInvoicesPDF(){
-    const rows = invoices.map(inv => ({
-      ID: inv.id,
-      Client: inv.client?.name || inv.client_id,
-      Title: inv.title || '',
-      Total: fmtMoney(inv.total, 'GHS'),
-      Paid: fmtMoney(inv.amount_paid||0, 'GHS'),
-      Balance: fmtMoney(inv.balance||0, 'GHS'),
-      Status: inv.status + (inv.overdue ? ' (Overdue)' : ''),
-      'Due Date': inv.due_date || '',
-      'Created': inv.created_at || ''
-    }));
-    downloadPDF('Invoices', rows);
   }
 
   return (
@@ -119,13 +102,15 @@ export default function Invoices(){
 
       <div style={{display:'flex',gap:8, marginBottom:12, flexWrap:'wrap'}}>
         <button className="btn" onClick={()=>setShow(true)}>Add Invoice</button>
-        <button className="btn secondary" onClick={()=>downloadCSV('invoices.csv', invoices)}>Export CSV</button>
-        <button className="btn secondary" onClick={exportInvoicesPDF}>Export PDF</button>
       </div>
 
       <div className="card table-wrap">
         <table>
-          <thead><tr><th>#</th><th>Client</th><th>Title</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Due</th><th>Created</th><th>Actions</th></tr></thead>
+          <thead><tr>
+            <th>#</th><th>Client</th><th>Title</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Due</th><th>Created</th>
+            <th>Recorded By</th>
+            <th>Actions</th>
+          </tr></thead>
           <tbody>
             {invoices.map(inv=> (
               <tr key={inv.id}>
@@ -138,6 +123,7 @@ export default function Invoices(){
                 <td><span className={`status ${inv.status==='part-paid'?'partial':inv.status}`}>{inv.status}{inv.overdue?' • Overdue':''}</span></td>
                 <td>{inv.due_date||''}</td>
                 <td>{inv.created_at||''}</td>
+                <td>{inv.created_by_user?.name || inv.created_by_user?.email || '—'}</td>
                 <td style={{display:'flex', gap:8, flexWrap:'wrap'}}>
                   <Link to={`/invoices/${inv.id}`}>View</Link>
                   {inv.status!=='paid' && <button className="btn secondary" onClick={()=>markPaid(inv.id)}>Mark paid</button>}
@@ -145,7 +131,7 @@ export default function Invoices(){
                 </td>
               </tr>
             ))}
-            {invoices.length===0 && <tr><td colSpan={10} className="muted">No invoices found</td></tr>}
+            {invoices.length===0 && <tr><td colSpan={11} className="muted">No invoices found</td></tr>}
           </tbody>
         </table>
       </div>
