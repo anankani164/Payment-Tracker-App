@@ -97,7 +97,8 @@ export default function Invoices(){
       'Created': i.created_at || '',
       'Recorded By': i.created_by_user?.name || i.created_by_user?.email || ''
     }));
-    exportPDF('invoices.pdf', headers, rows, { title:'Invoices', money:['Total','Paid','Balance'] });
+    // Landscape orientation for better readability
+    exportPDF('invoices.pdf', headers, rows, { title:'Invoices', money:['Total','Paid','Balance'], orientation:'landscape' });
   }
 
   return (

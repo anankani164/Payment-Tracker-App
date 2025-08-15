@@ -55,7 +55,8 @@ export default function Payments(){
       'Method': p.method ?? '',
       'Note': p.note ?? ''
     }));
-    exportPDF('payments.pdf', headers, rows, { title:'Payments', money:['Amount'] });
+    // Landscape orientation for better readability
+    exportPDF('payments.pdf', headers, rows, { title:'Payments', money:['Amount'], orientation:'landscape' });
   }
 
   return (
