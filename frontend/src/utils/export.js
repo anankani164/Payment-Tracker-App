@@ -21,14 +21,6 @@ export function exportCSV(filename, headers, rows){
   setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
 }
 
-async function loadDataURL(url){
-  try{
-    const res = await fetch(url);
-    const blob = await res.blob();
-    return await new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsDataURL(blob); });
-  }catch{ return null; }
-}
-
 export async function exportPDF(filename, headers, rows, opts = {}){
   try{
     const { jsPDF } = await import('https://esm.sh/jspdf@2.5.1');
@@ -41,11 +33,12 @@ export async function exportPDF(filename, headers, rows, opts = {}){
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
 
-    const brandColor = BRAND?.primary || '#D12027';
+    const brandColor = BRAND?.primary || '#2b59ff';
     const [r,g,b] = brandColor.startsWith('#')
       ? [parseInt(brandColor.slice(1,3),16), parseInt(brandColor.slice(3,5),16), parseInt(brandColor.slice(5,7),16)]
-      : [209,32,39];
+      : [43,89,255];
 
+    // Clean header bar (no logo per request)
     doc.setFillColor(r,g,b);
     doc.rect(0, 0, pageW, 64, 'F');
     doc.setTextColor(255,255,255);
@@ -55,15 +48,6 @@ export async function exportPDF(filename, headers, rows, opts = {}){
     const stamp = new Date().toLocaleString();
     const stampW = doc.getTextWidth(stamp);
     doc.text(stamp, pageW - 40 - stampW, 40);
-
-    const logoUrl = BRAND?.logoUrl;
-    if (logoUrl){
-      const dataUrl = await loadDataURL(logoUrl);
-      if (dataUrl){
-        const imgW = 120, imgH = 28;
-        doc.addImage(dataUrl, 'PNG', pageW - imgW - 40, 18, imgW, imgH);
-      }
-    }
 
     autoTable(doc, {
       startY: 80, head: [headers], body,
