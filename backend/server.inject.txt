@@ -1,0 +1,9 @@
+Add these two lines to your backend/server.js:
+
+1) At the top with other imports:
+   import registerClientStatementRoutes from './routes/clientStatements.js';
+
+2) After your DB and auth middleware are set up (near where other routes are registered):
+   registerClientStatementRoutes(app, db, auth);
+
+Commit server.js after inserting those lines.
