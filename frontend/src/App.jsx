@@ -9,13 +9,13 @@ import Admin from './pages/Admin.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import { getToken, getUser, clearToken } from './utils/api';
+import './ui.css';
 
 export default function App(){
   const [token, setTokenState] = useState(getToken());
   const [user, setUser] = useState(getUser());
   const navigate = useNavigate();
 
-  // Stay in sync with storage changes (e.g., other tabs)
   useEffect(()=>{
     const onStorage = ()=>{ setTokenState(getToken()); setUser(getUser()); };
     window.addEventListener('storage', onStorage);
@@ -32,40 +32,42 @@ export default function App(){
   const isAuthed = !!token;
 
   return (
-    <div className="container">
+    <div className="shell">
       <nav className="topnav">
         <div className="tabs">
-          <NavLink to="/" className={({isActive})=>isActive?'active':''}>Dashboard</NavLink>
-          <NavLink to="/clients" className={({isActive})=>isActive?'active':''}>Clients</NavLink>
-          <NavLink to="/invoices" className={({isActive})=>isActive?'active':''}>Invoices</NavLink>
-          <NavLink to="/payments" className={({isActive})=>isActive?'active':''}>Payments</NavLink>
-          <NavLink to="/admin" className={({isActive})=>isActive?'active':''}>Admin</NavLink>
+          <NavLink to="/" end className={({isActive})=>`tab ${isActive?'active':''}`}>Dashboard</NavLink>
+          <NavLink to="/clients" className={({isActive})=>`tab ${isActive?'active':''}`}>Clients</NavLink>
+          <NavLink to="/invoices" className={({isActive})=>`tab ${isActive?'active':''}`}>Invoices</NavLink>
+          <NavLink to="/payments" className={({isActive})=>`tab ${isActive?'active':''}`}>Payments</NavLink>
+          <NavLink to="/admin" className={({isActive})=>`tab ${isActive?'active':''}`}>Admin</NavLink>
         </div>
         <div className="auth">
           {isAuthed ? (
             <>
-              <span className="muted" style={{marginRight:8}}>Hi {user?.name || user?.email || 'User'}</span>
+              <span className="hello">Hi {user?.name || user?.email || 'User'}</span>
               <button className="btn small" onClick={logout}>Logout</button>
             </>
           ) : (
-            <>
-              <NavLink to="/login" className={({isActive})=>isActive?'active':''}>Login</NavLink>
-              <NavLink to="/register" className={({isActive})=>isActive?'active':''}>Register</NavLink>
-            </>
+            <div className="auth-links">
+              <NavLink to="/login" className={({isActive})=>`link ${isActive?'active':''}`}>Login</NavLink>
+              <NavLink to="/register" className={({isActive})=>`link ${isActive?'active':''}`}>Register</NavLink>
+            </div>
           )}
         </div>
       </nav>
 
-      <Routes>
-        <Route path="/" element={<Dashboard/>} />
-        <Route path="/clients" element={<Clients/>} />
-        <Route path="/invoices" element={<Invoices/>} />
-        <Route path="/invoices/:id" element={<InvoiceDetails/>} />
-        <Route path="/payments" element={<Payments/>} />
-        <Route path="/admin" element={<Admin/>} />
-        <Route path="/login" element={<Login/>} />
-        <Route path="/register" element={<Register/>} />
-      </Routes>
+      <main className="container">
+        <Routes>
+          <Route path="/" element={<Dashboard/>} />
+          <Route path="/clients" element={<Clients/>} />
+          <Route path="/invoices" element={<Invoices/>} />
+          <Route path="/invoices/:id" element={<InvoiceDetails/>} />
+          <Route path="/payments" element={<Payments/>} />
+          <Route path="/admin" element={<Admin/>} />
+          <Route path="/login" element={<Login/>} />
+          <Route path="/register" element={<Register/>} />
+        </Routes>
+      </main>
     </div>
   );
 }
