@@ -9,6 +9,7 @@ import Admin from './pages/Admin.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import { getToken, getUser, clearToken } from './utils/api';
+import { BRAND } from './utils/brand';
 import './ui.css';
 
 export default function App(){
@@ -17,15 +18,14 @@ export default function App(){
   const navigate = useNavigate();
 
   useEffect(()=>{
-    const onStorage = ()=>{ setTokenState(getToken()); setUser(getUser()); };
-    window.addEventListener('storage', onStorage);
-    return ()=> window.removeEventListener('storage', onStorage);
+    const sync = ()=>{ setTokenState(getToken()); setUser(getUser()); };
+    window.addEventListener('storage', sync);
+    window.addEventListener('auth:change', sync);
+    return ()=> { window.removeEventListener('storage', sync); window.removeEventListener('auth:change', sync); };
   },[]);
 
   function logout(){
     clearToken();
-    setTokenState('');
-    setUser(null);
     navigate('/login');
   }
 
@@ -34,6 +34,11 @@ export default function App(){
   return (
     <div className="shell">
       <nav className="topnav">
+        <div className="brand">
+          <a href="/" className="brand-link">
+            <img src={BRAND.logoUrl} alt={BRAND.name} className="brand-logo" />
+          </a>
+        </div>
         <div className="tabs">
           <NavLink to="/" end className={({isActive})=>`tab ${isActive?'active':''}`}>Dashboard</NavLink>
           <NavLink to="/clients" className={({isActive})=>`tab ${isActive?'active':''}`}>Clients</NavLink>
