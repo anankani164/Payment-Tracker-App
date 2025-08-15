@@ -3,39 +3,48 @@ import { useNavigate } from 'react-router-dom';
 import { apiFetch, setToken, clearToken } from '../utils/api';
 
 export default function Login(){
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
 
-  async function onSubmit(e){
+  async function submit(e){
     e.preventDefault();
-    setError('');
+    setLoading(true);
     try{
-      const r = await apiFetch('/api/auth/login', { method:'POST', body: JSON.stringify({email,password}) });
-      const data = await r.json();
-      if(!r.ok) throw new Error(data?.error || 'Login failed');
-      setToken(data.token);
+      const res = await apiFetch('/api/auth/login', {
+        method:'POST',
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if(!res.ok || !data?.token){
+        throw new Error(data?.error || 'Login failed');
+      }
+      // Persist token + user so other pages (Clients) can send Authorization header
+      setToken(data.token, data.user);
       navigate('/');
-    }catch(err){ setError(err.message); }
-  }
-
-  function logout(){
-    clearToken();
-    navigate('/');
+    }catch(err){
+      alert(err.message || 'Login failed');
+      clearToken();
+    }finally{
+      setLoading(false);
+    }
   }
 
   return (
-    <div className="card" style={{maxWidth:420, margin:'40px auto'}}>
-      <h2 style={{marginTop:0}}>Sign in</h2>
-      <form onSubmit={onSubmit} style={{display:'grid', gap:10}}>
-        <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required />
-        <input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required />
-        <button className="btn">Login</button>
-      </form>
-      {error && <p style={{color:'crimson', marginTop:10}}>{error}</p>}
-      <p className="muted" style={{marginTop:10}}>If this is a new install, an admin must create your account.</p>
-      <button className="btn secondary" onClick={logout} style={{marginTop:8}}>Logout (clear token)</button>
+    <div style={{maxWidth:380, margin:'40px auto'}}>
+      <h1 className="page-title">Login</h1>
+      <div className="card">
+        <form onSubmit={submit}>
+          <div style={{display:'grid', gap:12}}>
+            <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required />
+            <input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required />
+          </div>
+          <div style={{display:'flex', gap:8, justifyContent:'flex-end', marginTop:12}}>
+            <button type="submit" className="btn" disabled={loading}>{loading?'Signing in…':'Login'}</button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
