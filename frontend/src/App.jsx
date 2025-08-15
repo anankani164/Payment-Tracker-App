@@ -8,6 +8,7 @@ import Payments from './pages/Payments.jsx';
 import Admin from './pages/Admin.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
+import RequireAuth from './RequireAuth.jsx';
 import { getToken, getUser, clearToken } from './utils/api';
 import { BRAND } from './utils/brand';
 import './ui.css';
@@ -39,13 +40,19 @@ export default function App(){
             <img src={BRAND.logoUrl} alt={BRAND.name} className="brand-logo" />
           </a>
         </div>
-        <div className="tabs">
-          <NavLink to="/" end className={({isActive})=>`tab ${isActive?'active':''}`}>Dashboard</NavLink>
-          <NavLink to="/clients" className={({isActive})=>`tab ${isActive?'active':''}`}>Clients</NavLink>
-          <NavLink to="/invoices" className={({isActive})=>`tab ${isActive?'active':''}`}>Invoices</NavLink>
-          <NavLink to="/payments" className={({isActive})=>`tab ${isActive?'active':''}`}>Payments</NavLink>
-          <NavLink to="/admin" className={({isActive})=>`tab ${isActive?'active':''}`}>Admin</NavLink>
-        </div>
+
+        {isAuthed ? (
+          <div className="tabs">
+            <NavLink to="/" end className={({isActive})=>`tab ${isActive?'active':''}`}>Dashboard</NavLink>
+            <NavLink to="/clients" className={({isActive})=>`tab ${isActive?'active':''}`}>Clients</NavLink>
+            <NavLink to="/invoices" className={({isActive})=>`tab ${isActive?'active':''}`}>Invoices</NavLink>
+            <NavLink to="/payments" className={({isActive})=>`tab ${isActive?'active':''}`}>Payments</NavLink>
+            <NavLink to="/admin" className={({isActive})=>`tab ${isActive?'active':''}`}>Admin</NavLink>
+          </div>
+        ) : (
+          <div />  /* keep grid space */
+        )}
+
         <div className="auth">
           {isAuthed ? (
             <>
@@ -63,12 +70,12 @@ export default function App(){
 
       <main className="container">
         <Routes>
-          <Route path="/" element={<Dashboard/>} />
-          <Route path="/clients" element={<Clients/>} />
-          <Route path="/invoices" element={<Invoices/>} />
-          <Route path="/invoices/:id" element={<InvoiceDetails/>} />
-          <Route path="/payments" element={<Payments/>} />
-          <Route path="/admin" element={<Admin/>} />
+          <Route path="/" element={<RequireAuth><Dashboard/></RequireAuth>} />
+          <Route path="/clients" element={<RequireAuth><Clients/></RequireAuth>} />
+          <Route path="/invoices" element={<RequireAuth><Invoices/></RequireAuth>} />
+          <Route path="/invoices/:id" element={<RequireAuth><InvoiceDetails/></RequireAuth>} />
+          <Route path="/payments" element={<RequireAuth><Payments/></RequireAuth>} />
+          <Route path="/admin" element={<RequireAuth><Admin/></RequireAuth>} />
           <Route path="/login" element={<Login/>} />
           <Route path="/register" element={<Register/>} />
         </Routes>
