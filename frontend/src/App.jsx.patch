@@ -1,0 +1,60 @@
+*** a/frontend/src/App.jsx
+--- b/frontend/src/App.jsx
+***************
+*** 1,10 ****
+  import React, { useEffect, useState } from 'react';
+  import { NavLink, Route, Routes, useNavigate, Navigate, useLocation } from 'react-router-dom';
+  import Dashboard from './pages/Dashboard.jsx';
+  import Clients from './pages/Clients.jsx';
+  import Invoices from './pages/Invoices.jsx';
+  import InvoiceDetails from './pages/InvoiceDetails.jsx';
+  import Payments from './pages/Payments.jsx';
+  import ClientStatement from './pages/ClientStatement.jsx';
+  import Admin from './pages/Admin.jsx';
+  import Login from './pages/Login.jsx';
+  import Register from './pages/Register.jsx';
+  import { apiFetch } from './utils/api';
+
+  import './brand.css';
+  import logoUrl from './assets/logo.png';
+--- 1,12 ----
+  import React, { useEffect, useState } from 'react';
+  import { NavLink, Route, Routes, useNavigate, Navigate, useLocation } from 'react-router-dom';
+  import Dashboard from './pages/Dashboard.jsx';
+  import Clients from './pages/Clients.jsx';
+  import Invoices from './pages/Invoices.jsx';
+  import InvoiceDetails from './pages/InvoiceDetails.jsx';
+  import Payments from './pages/Payments.jsx';
+  import ClientStatement from './pages/ClientStatement.jsx';
+  import Admin from './pages/Admin.jsx';
+  import Login from './pages/Login.jsx';
+  import Register from './pages/Register.jsx';
+  import { apiFetch } from './utils/api';
++ import initBrandFromLogo from './theme/deriveBrandFromLogo.js';
+
+  import './brand.css';
+  import logoUrl from './assets/logo.png';
+***************
+*** 41,46 ****
+    }, [hasToken]);
+
+    function logout(){
+      clearAnyToken();
+      setUser(null);
+      setHasToken(false);
+      navigate('/login');
+    }
+--- 43,52 ----
+    }, [hasToken]);
+
++   // set brand CSS variables from the actual logo color
++   useEffect(() => {
++     initBrandFromLogo(logoUrl);
++   }, []);
++ 
+    function logout(){
+      clearAnyToken();
+      setUser(null);
+      setHasToken(false);
+      navigate('/login');
+    }
