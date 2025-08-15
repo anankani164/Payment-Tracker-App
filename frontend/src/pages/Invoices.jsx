@@ -97,7 +97,6 @@ export default function Invoices(){
       'Created': i.created_at || '',
       'Recorded By': i.created_by_user?.name || i.created_by_user?.email || ''
     }));
-    // Landscape orientation for better readability
     exportPDF('invoices.pdf', headers, rows, { title:'Invoices', money:['Total','Paid','Balance'], orientation:'landscape' });
   }
 
@@ -151,10 +150,12 @@ export default function Invoices(){
             <th>Actions</th>
           </tr></thead>
           <tbody>
-            {invoices.map(inv=> (
+            {invoices.map(inv=> {
+              const cid = inv.client_id || inv.client?.id || inv.clientId;
+              return (
               <tr key={inv.id}>
                 <td>{inv.id}</td>
-                <td>{inv.client?.name||inv.client_id}</td>
+                <td>{cid ? <Link to={`/clients/${cid}/statement`}>{inv.client?.name||cid}</Link> : (inv.client?.name||'')}</td>
                 <td>{inv.title||''}</td>
                 <td><Money value={inv.total} /></td>
                 <td><Money value={inv.amount_paid||0} /></td>
@@ -169,7 +170,7 @@ export default function Invoices(){
                   <button className="btn danger" onClick={()=>del(inv.id)}>Delete</button>
                 </td>
               </tr>
-            ))}
+            )})}
             {invoices.length===0 && <tr><td colSpan={11} className="muted">No invoices found</td></tr>}
           </tbody>
         </table>

@@ -55,7 +55,6 @@ export default function Payments(){
       'Method': p.method ?? '',
       'Note': p.note ?? ''
     }));
-    // Landscape orientation for better readability
     exportPDF('payments.pdf', headers, rows, { title:'Payments', money:['Amount'], orientation:'landscape' });
   }
 
@@ -91,10 +90,12 @@ export default function Payments(){
             <th>Date</th><th>Client</th><th>Amount</th><th>Percent</th><th>Invoice</th><th>Recorded By</th><th>Method</th><th>Note</th>
           </tr></thead>
           <tbody>
-            {payments.map(p=> (
+            {payments.map(p=> {
+              const cid = p.client_id || p.client?.id || p.clientId;
+              return (
               <tr key={p.id}>
                 <td>{new Date(p.created_at).toLocaleString()}</td>
-                <td>{p.client?.name || ''}</td>
+                <td>{cid ? <Link to={`/clients/${cid}/statement`}>{p.client?.name || cid}</Link> : (p.client?.name || '')}</td>
                 <td><Money value={p.amount} /></td>
                 <td>{p.percent ?? ''}</td>
                 <td>{p.invoice_id ? <Link to={`/invoices/${p.invoice_id}`}>#{p.invoice_id}</Link> : ''}</td>
@@ -102,7 +103,7 @@ export default function Payments(){
                 <td>{p.method ?? ''}</td>
                 <td>{p.note ?? ''}</td>
               </tr>
-            ))}
+            )})}
             {payments.length===0 && <tr><td colSpan={8} className="muted">No payments found</td></tr>}
           </tbody>
         </table>
