@@ -10,7 +10,7 @@ import Admin from './pages/Admin.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import { apiFetch } from './utils/api';
-import initBrandFromLogo from './theme/deriveBrandFromLogo.js'; // NEW
+import initBrandFromLogo from './theme/deriveBrandFromLogo.js'; // keep this
 
 import './brand.css';
 import logoUrl from './assets/logo.png';
@@ -63,8 +63,14 @@ export default function App(){
     return ()=>{ cancelled = true; };
   }, [hasToken]);
 
-  // NEW: derive brand colors from your logo once on load
-  useEffect(() => { initBrandFromLogo(logoUrl); }, []);
+  // Derive brand from logo, then force red overrides (Option B)
+  useEffect(() => {
+    initBrandFromLogo(logoUrl); // keep auto-derive
+    const r = document.documentElement.style; // then override to red
+    r.setProperty('--brand-primary', '#ef4444');
+    r.setProperty('--brand-primary-ink', '#ffffff');
+    r.setProperty('--brand-primary-10', '#fee2e2');
+  }, []);
 
   function logout(){
     clearAnyToken();
