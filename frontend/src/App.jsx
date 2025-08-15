@@ -5,6 +5,7 @@ import Clients from './pages/Clients.jsx';
 import Invoices from './pages/Invoices.jsx';
 import InvoiceDetails from './pages/InvoiceDetails.jsx';
 import Payments from './pages/Payments.jsx';
+import ClientStatement from './pages/ClientStatement.jsx';
 import Admin from './pages/Admin.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
@@ -50,7 +51,7 @@ export default function App(){
             <NavLink to="/admin" className={({isActive})=>`tab ${isActive?'active':''}`}>Admin</NavLink>
           </div>
         ) : (
-          <div />  /* keep grid space */
+          <div />
         )}
 
         <div className="auth">
@@ -72,6 +73,7 @@ export default function App(){
         <Routes>
           <Route path="/" element={<RequireAuth><Dashboard/></RequireAuth>} />
           <Route path="/clients" element={<RequireAuth><Clients/></RequireAuth>} />
+          <Route path="/clients/:id/statement" element={<RequireAuth><ClientStatement/></RequireAuth>} />
           <Route path="/invoices" element={<RequireAuth><Invoices/></RequireAuth>} />
           <Route path="/invoices/:id" element={<RequireAuth><InvoiceDetails/></RequireAuth>} />
           <Route path="/payments" element={<RequireAuth><Payments/></RequireAuth>} />
