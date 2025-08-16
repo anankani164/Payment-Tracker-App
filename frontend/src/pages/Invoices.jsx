@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
 import Money from '../components/Money';
@@ -17,7 +17,7 @@ export default function Invoices(){
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ client_id: '', title: '', description: '', total: '', due_date: '' });
   const [saving, setSaving] = useState(false);
-
+  const [markingId, setMarkingId] = useState(null);
   async function load(){
     setLoading(true);
     const qs = new URLSearchParams();
@@ -29,6 +29,22 @@ export default function Invoices(){
       apiFetch('/api/invoices?' + qs.toString()),
       apiFetch('/api/clients')
     ]);
+    // Mark an invoice as paid, then reload list
+const markPaid = useCallback(async (id) => {
+  if (!id) return;
+  try {
+    setMarkingId(id);
+    const res = await apiFetch(`/api/invoices/${id}/mark-paid`, { method: 'POST' });
+    if (!res.ok) {
+      const msg = await res.text().catch(() => 'Failed to mark as paid');
+      alert(msg);
+      return;
+    }
+    if (typeof load === 'function') await load(); // refresh from server
+  } finally {
+    setMarkingId(null);
+  }
+}, []);
     const inv = invRes.ok ? await invRes.json() : [];
     const cls = clRes.ok ? await clRes.json() : [];
     setItems(Array.isArray(inv) ? inv : (inv.items || []));
@@ -154,7 +170,19 @@ export default function Invoices(){
                   <td>{it.due_date || '—'}</td>
                   <td>{it.created_at || '—'}</td>
                   <td>{it.recorded_by || '—'}</td>
-                  <td><Link to={`/invoices/${it.id}`}>View</Link></td>
+                  <td>
+  <Link to={`/invoices/${it.id}`}>View</Link>{' '}
+  {it.status !== 'paid' && (
+    <button
+      className="btn btn-ghost pill"
+      disabled={markingId === it.id}
+      onClick={() => markPaid(it.id)}
+      title="Set invoice status to paid"
+    >
+      {markingId === it.id ? 'Saving…' : 'Mark as paid'}
+    </button>
+  )}
+</td>
                 </tr>
               );
             })}
