@@ -7,6 +7,7 @@ export default function Admin(){
   const [show, setShow] = useState(false);
   const [form, setForm] = useState({ name:'', email:'', password:'', role:'staff' });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   async function load(){
     try{
@@ -15,11 +16,18 @@ export default function Admin(){
       setMe(meData.user);
 
       const r = await apiFetch('/api/users');
-      if(!r.ok){ console.warn('Users load failed'); return; }
+      if(!r.ok){
+        const d = await r.json().catch(()=>({}));
+        setError(d.error || 'Failed to load users (check backend /api/users routes & auth)');
+        setUsers([]);
+        return;
+      }
       const data = await r.json();
       setUsers(Array.isArray(data) ? data : []);
+      setError('');
     }catch(e){
-      console.error(e);
+      setError('Failed to load users');
+      setUsers([]);
     }
   }
   useEffect(()=>{ load(); },[]);
@@ -73,6 +81,8 @@ export default function Admin(){
         <h1 style={{margin:0}}>Users</h1>
         <button className="btn" onClick={()=>setShow(true)}>Add User</button>
       </div>
+
+      {error && <div className="error" style={{marginTop:8}}>{error}</div>}
 
       <table className="table" style={{marginTop:12}}>
         <thead>
