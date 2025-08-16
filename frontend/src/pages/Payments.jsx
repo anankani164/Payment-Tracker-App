@@ -1,196 +1,116 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import Money from '../components/Money';
+import { Link } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
+import Money from '../components/Money';
 import { exportCSV, exportPDF } from '../utils/export';
 
-const isCleanInt = (v) => /^\d+$/.test(String(v||'').trim());
-
 export default function Payments(){
-  const [payments, setPayments] = useState([]);
+  const [items, setItems] = useState([]);
   const [clients, setClients] = useState([]);
-  const [invoices, setInvoices] = useState([]);
-  const [params, setParams] = useSearchParams();
-  const [filters, setFilters] = useState({
-    client_id: params.get('client_id') || '',
-    invoice_id: params.get('invoice_id') || '',
-    from: params.get('from') || '',
-    to: params.get('to') || '',
-    q: params.get('q') || ''
-  });
-  const [show, setShow] = useState(false);
-  const [form, setForm] = useState({invoice_id:'', amount:'', percent:'', method:'', note:'', created_at:''});
-
-  function applyFilters(newFilters = filters){
-    const sp = new URLSearchParams();
-    Object.entries(newFilters).forEach(([k,v])=>{ if (v) sp.set(k, v); });
-    setParams(sp, { replace:true });
-  }
+  const [clientId, setClientId] = useState('all');
+  const [invoiceId, setInvoiceId] = useState('');
+  const [method, setMethod] = useState('');
+  const [loading, setLoading] = useState(true);
 
   async function load(){
-    try{
-      const qs = params.toString();
-      const pRes = await apiFetch('/api/payments' + (qs ? `?${qs}` : ''));
-      if (pRes.status === 401) return (window.location.href = '/login');
-      const p = await pRes.json();
-
-      const iRes = await apiFetch('/api/invoices');
-      const inv = await iRes.json();
-
-      const cRes = await apiFetch('/api/clients');
-      const cli = await cRes.json();
-
-      setPayments(p);
-      setInvoices(inv);
-      setClients(cli);
-    }catch(err){
-      console.error('Failed to load payments', err);
-      setPayments([]);
-    }
+    setLoading(true);
+    const qs = new URLSearchParams();
+    if (clientId !== 'all') qs.set('client_id', clientId);
+    if (invoiceId) qs.set('invoice_id', invoiceId);
+    if (method) qs.set('method', method);
+    const [p, c] = await Promise.all([
+      apiFetch('/api/payments?' + qs.toString()),
+      apiFetch('/api/clients')
+    ]);
+    const prow = p.ok ? await p.json() : [];
+    const crow = c.ok ? await c.json() : [];
+    setItems(Array.isArray(prow) ? prow : (prow.items || []));
+    setClients(Array.isArray(crow) ? crow : (crow.items || []));
+    setLoading(false);
   }
-  useEffect(()=>{ load(); },[params]);
+  useEffect(()=>{ load(); /* eslint-disable-next-line */ }, []);
 
-  async function add(){
-    const body = { ...form, invoice_id: Number(form.invoice_id), amount: Number(form.amount)||0, percent: Number(form.percent)||undefined };
-    if(!body.invoice_id || (!body.amount && !body.percent)) return alert('Select invoice and amount or percent');
-    if (body.created_at) {
-      const d = new Date(body.created_at);
-      if (!isNaN(d)) body.created_at = d.toISOString();
-    } else { delete body.created_at; }
-    const r = await apiFetch('/api/payments', {method:'POST', body: JSON.stringify(body)});
-    if(!r.ok) return alert('Failed to add payment');
-    setShow(false);
-    setForm({invoice_id:'', amount:'', percent:'', method:'', note:'', created_at:''});
-    load();
-  }
-
-  async function del(id){
-    if(!confirm('Delete this payment?')) return;
-    const r = await apiFetch(`/api/payments/${id}`, {method:'DELETE'});
-    const d = await r.json().catch(()=>({}));
-    if(!r.ok) return alert(d.error||'Failed to delete');
-    load();
-  }
-
-  function exportPaymentsCSV(){
-    const headers = ['ID','Invoice','Client','Amount','Method','Note','Created','Recorded By'];
-    const rows = payments.map(p => ({
-      'ID': p.id,
-      'Invoice': p.invoice_id,
-      'Client': p.client?.name || '',
-      'Amount': p.amount,
-      'Method': p.method || '',
-      'Note': p.note || '',
-      'Created': p.created_at || '',
-      'Recorded By': p.recorded_by_user?.name || p.recorded_by_user?.email || ''
+  function onExportCSV(){
+    const headers = ['Date','Client','Amount','Percent','Invoice','Recorded By','Method','Note'];
+    const rows = items.map(x => ({
+      'Date': x.created_at || '',
+      'Client': x.client_name || '',
+      'Amount': x.amount || 0,
+      'Percent': x.percent || '',
+      'Invoice': x.invoice_id ? ('#' + x.invoice_id) : '',
+      'Recorded By': x.recorded_by || '',
+      'Method': x.method || '',
+      'Note': x.note || ''
     }));
     exportCSV('payments.csv', headers, rows);
   }
-
-  function exportPaymentsPDF(){
-    const headers = ['ID','Invoice','Client','Amount','Method','Note','Created','Recorded By'];
-    const rows = payments.map(p => ({
-      'ID': p.id,
-      'Invoice': p.invoice_id,
-      'Client': p.client?.name || '',
-      'Amount': p.amount,
-      'Method': p.method || '',
-      'Note': p.note || '',
-      'Created': p.created_at || '',
-      'Recorded By': p.recorded_by_user?.name || p.recorded_by_user?.email || ''
+  function onExportPDF(){
+    const headers = ['Date','Client','Amount','Percent','Invoice','Recorded By','Method','Note'];
+    const rows = items.map(x => ({
+      'Date': x.created_at || '',
+      'Client': x.client_name || '',
+      'Amount': x.amount || 0,
+      'Percent': x.percent || '',
+      'Invoice': x.invoice_id ? ('#' + x.invoice_id) : '',
+      'Recorded By': x.recorded_by || '',
+      'Method': x.method || '',
+      'Note': x.note || ''
     }));
-    exportPDF('payments.pdf', headers, rows, { title:'Payments', money:['Amount'], orientation:'landscape' });
+    exportPDF('payments.pdf', headers, rows, { orientation:'landscape', money:['Amount'] });
   }
 
   return (
     <div className="page">
       <h1>Payments</h1>
 
-      {/* Filters */}
-      <div className="filters">
-        <select value={filters.client_id} onChange={e=>setFilters({...filters, client_id:e.target.value})}>
-          <option value="">All clients</option>
-          {clients.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        <select value={filters.invoice_id} onChange={e=>setFilters({...filters, invoice_id:e.target.value})}>
-          <option value="">All invoices</option>
-          {invoices.map(i=> <option key={i.id} value={i.id}>#{i.id} — {i.title||''}</option>)}
-        </select>
-        <input type="date" value={filters.from} onChange={e=>setFilters({...filters, from:e.target.value})} />
-        <input type="date" value={filters.to} onChange={e=>setFilters({...filters, to:e.target.value})} />
-        <input placeholder="Search note/method" value={filters.q} onChange={e=>setFilters({...filters, q:e.target.value})} />
-        <button className="border" onClick={()=>applyFilters()}>Apply</button>
-        <button className="border" onClick={()=>{ setFilters({client_id:'',invoice_id:'',from:'',to:'',q:''}); applyFilters({}); }}>Reset</button>
-
-        {/* Exports */}
-        <button className="border" onClick={exportPaymentsCSV}>Export CSV</button>
-        <button className="btn" onClick={exportPaymentsPDF}>Export PDF</button>
-
-        <button className="btn" style={{marginLeft:'auto'}} onClick={()=>setShow(true)}>Record Payment</button>
+      <div className="filters card">
+        <div className="left" style={{gridTemplateColumns:'160px 160px 160px auto auto'}}>
+          <select value={clientId} onChange={e=>setClientId(e.target.value)}>
+            <option value="all">All clients</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <input placeholder="Invoice ID" value={invoiceId} onChange={e=>setInvoiceId(e.target.value)} />
+          <input placeholder="Method" value={method} onChange={e=>setMethod(e.target.value)} />
+          <button className="pill btn" onClick={load}>Apply</button>
+          <button className="pill secondary" onClick={()=>{ setClientId('all'); setInvoiceId(''); setMethod(''); setTimeout(load,0); }}>Reset</button>
+        </div>
+        <div className="right">
+          <button className="pill export-csv" onClick={onExportCSV}>Export CSV</button>
+          <button className="pill export-pdf" onClick={onExportPDF}>Export PDF</button>
+        </div>
       </div>
 
-      <table className="table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Invoice</th>
-            <th>Client</th>
-            <th>Amount</th>
-            <th>Method</th>
-            <th>Note</th>
-            <th>Created</th>
-            <th>Recorded By</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {payments.map(p => {
-            const invId = p.invoice_id;
-            const clientName = p.client?.name || '';
-            return (
-              <tr key={p.id}>
-                <td>{p.id}</td>
-                <td><Link to={`/invoices/${invId}`}>#{invId}</Link></td>
-                <td>{clientName}</td>
-                <td><Money value={p.amount} /></td>
-                <td>{p.method||''}</td>
-                <td>{p.note||''}</td>
-                <td>{p.created_at||''}</td>
-                <td>{p.recorded_by_user?.name || p.recorded_by_user?.email || '—'}</td>
-                <td>
-                  <button className="danger" onClick={()=>del(p.id)}>Delete</button>
-                </td>
+      <div className="card">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Client</th>
+              <th>Amount</th>
+              <th>Percent</th>
+              <th>Invoice</th>
+              <th>Recorded By</th>
+              <th>Method</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(x => (
+              <tr key={x.id}>
+                <td>{x.created_at || '—'}</td>
+                <td><Link to={`/clients/${x.client_id}`}>{x.client_name || '—'}</Link></td>
+                <td><Money value={x.amount || 0} /></td>
+                <td>{x.percent || '—'}</td>
+                <td>{x.invoice_id ? <Link to={`/invoices/${x.invoice_id}`}>#{x.invoice_id}</Link> : '—'}</td>
+                <td>{x.recorded_by || '—'}</td>
+                <td>{x.method || '—'}</td>
+                <td>{x.note || '—'}</td>
               </tr>
-            );
-          })}
-          {payments.length===0 && (
-            <tr><td colSpan={9} className="muted">No payments found</td></tr>
-          )}
-        </tbody>
-      </table>
-
-      {show && (
-        <div className="modal">
-          <div className="card" style={{maxWidth:540}}>
-            <h3 style={{marginTop:0}}>Record payment</h3>
-            <div className="form-grid">
-              <select value={form.invoice_id} onChange={e=>setForm({...form, invoice_id:e.target.value})}>
-                <option value="">Select invoice</option>
-                {invoices.map(i=> <option key={i.id} value={i.id}>#{i.id} — {i.title||''}</option>)}
-              </select>
-              <input type="number" step="0.01" placeholder="Amount (or use %)" value={form.amount} onChange={e=>setForm({...form, amount:e.target.value})} />
-              <input type="number" step="0.01" placeholder="% of invoice" value={form.percent} onChange={e=>setForm({...form, percent:e.target.value})} />
-              <input placeholder="Method" value={form.method} onChange={e=>setForm({...form, method:e.target.value})} />
-              <input placeholder="Note" value={form.note} onChange={e=>setForm({...form, note:e.target.value})} />
-              <input type="datetime-local" value={form.created_at} onChange={e=>setForm({...form, created_at:e.target.value})} />
-            </div>
-            <div style={{display:'flex', gap:8, justifyContent:'flex-end', marginTop:12}}>
-              <button onClick={()=>setShow(false)} className="border">Cancel</button>
-              <button onClick={add} className="btn">Save</button>
-            </div>
-          </div>
-        </div>
-      )}
+            ))}
+            {items.length===0 && <tr><td colSpan={8} className="muted">No payments found</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
