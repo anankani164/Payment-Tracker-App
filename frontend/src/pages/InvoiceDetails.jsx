@@ -1,174 +1,222 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
-import Money from '../components/Money';
-import { fmtMoney } from '../utils/format';
 
-export default function InvoiceDetails(){
+export default function InvoiceDetails() {
   const { id } = useParams();
+  const navigate = useNavigate();
+
+  // --- state ---
   const [invoice, setInvoice] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [form, setForm] = useState({ amount:'', percent:'', method:'', note:'', created_at:'' });
+  const [payments, setPayments] = useState([]);
+  const [amount, setAmount] = useState('');
+  const [percent, setPercent] = useState('');
+  const [method, setMethod] = useState('');
+  const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
-  async function load(){
-    try{
-      setLoading(true);
-      const r = await fetch(`/api/invoices/${id}`);
-      const data = await r.json();
-      setInvoice(data);
-      setError('');
-    }catch(e){
-      setError('Failed to load invoice');
-    }finally{
-      setLoading(false);
-    }
-  }
-  useEffect(()=>{ load(); }, [id]);
+  // --- helpers (local + safe) ---
+  const formatMoney = (value, cur = 'GHS') => {
+    const n = Number(value || 0);
+    return `${cur} ${n.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
 
-  async function markPaid(){
-    try{
-      setBusy(true);
-      const r = await apiFetch(`/api/invoices/${id}/mark-paid`, { method:'POST' });
-      if(!r.ok){
-        const d = await r.json().catch(()=>({}));
-        throw new Error(d?.error || 'Failed to mark paid');
-      }
-      await load();
-    }catch(err){
-      alert(err.message || 'Unauthorized (please login)');
-    }finally{
-      setBusy(false);
-    }
-  }
+  const normalizeInvoice = (raw) => {
+    const inv = raw?.invoice ?? raw ?? {};
+    const total = Number(inv.total ?? inv.amount_total ?? 0);
+    const paid =
+      Number(inv.paid ?? inv.amount_paid ?? inv.paid_total ?? 0) || 0;
+    return {
+      id: inv.id ?? Number(id),
+      clientId: inv.client_id ?? inv.clientId,
+      clientName:
+        inv.clientName ?? inv.client_name ?? inv.client?.name ?? '',
+      status: inv.status ?? 'pending',
+      total,
+      paid,
+      balance: inv.balance ?? Math.max(0, total - paid),
+      due_date: inv.due_date ?? inv.dueDate ?? null,
+      created_at: inv.created ?? inv.created_at ?? null,
+      currency: inv.currency ?? 'GHS',
+    };
+  };
 
-  async function addPayment(e){
+  // shareable loader
+  const load = useCallback(async () => {
+    const r = await apiFetch(`/api/invoices/${id}`);
+    const data = await r.json();
+    setInvoice(normalizeInvoice(data));
+    setPayments(data?.payments ?? data?.pays ?? []);
+  }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // --- actions ---
+  async function addPayment(e) {
     e.preventDefault();
-    const amount = form.amount ? Number(form.amount) : null;
-    const percent = form.percent ? Number(form.percent) : null;
-    if ((!amount || amount<=0) && (!percent || percent<=0)) {
-      return alert('Enter an amount or percent > 0');
-    }
+    if (busy) return;
     setBusy(true);
-    try{
-      const body = { invoice_id: Number(id) };
-      if (amount) body.amount = amount;
-      if (percent) body.percent = percent;
-      if (form.method) body.method = form.method;
-      if (form.note) body.note = form.note;
-      if (form.created_at) {
-        const d = new Date(form.created_at);
-        if (!isNaN(d)) body.created_at = d.toISOString();
+    try {
+      const body = {
+        invoice_id: invoice?.id ?? Number(id),
+        amount,
+        percent,
+        method,
+        note,
+      };
+      const r = await apiFetch('/api/payments', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const msg = (await r.text()) || 'Failed to add payment';
+        alert(msg);
+      } else {
+        // clear & refresh
+        setAmount('');
+        setPercent('');
+        setMethod('');
+        setNote('');
+        await load();
       }
-      const res = await apiFetch('/api/payments', { method:'POST', body: JSON.stringify(body) });
-      if(!res.ok){
-        const d = await res.json().catch(()=>({}));
-        throw new Error(d?.error || 'Failed to add payment');
-      }
-      setForm({ amount:'', percent:'', method:'', note:'', created_at:'' });
-      await load();
-    }catch(err){
-      alert(err.message || 'Unauthorized (please login)');
-    }finally{
+    } finally {
       setBusy(false);
     }
   }
 
-  async function deletePayment(pid){
-    if(!confirm('Delete this payment? This will update the invoice balance.')) return;
-    try{
-      setBusy(true);
-      const res = await apiFetch(`/api/payments/${pid}`, { method:'DELETE' });
-      if(!res.ok){
-        const d = await res.json().catch(()=>({}));
-        throw new Error(d?.error || 'Failed to delete');
-      }
-      await load();
-    }catch(err){
-      alert(err.message || 'Unauthorized (please login)');
-    }finally{
-      setBusy(false);
-    }
+  async function deletePayment(pid) {
+    if (!window.confirm('Delete this payment?')) return;
+    const r = await apiFetch(`/api/payments/${pid}`, { method: 'DELETE' });
+    if (r.ok) await load();
   }
 
-  if (loading) return <div className="card"><p>Loading…</p></div>;
-  if (error) return <div className="card"><p style={{color:'crimson'}}>{error}</p></div>;
-  if (!invoice) return <div className="card"><p>Not found</p></div>;
+  async function markPaid() {
+    if (!invoice) return;
+    const r = await apiFetch(`/api/invoices/${invoice.id}/mark-paid`, {
+      method: 'POST',
+    });
+    if (r.ok) await load();
+  }
 
-  const balance = Number(invoice.total) - Number(invoice.amount_paid||0);
+  if (!invoice) {
+    return (
+      <div className="container">
+        <h2>Invoice</h2>
+        <div className="muted">Loading…</div>
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <h1 className="page-title">Invoice #{invoice.id}</h1>
+    <div className="container">
+      {/* Title */}
+      <div className="page-head" style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
+        <h2 style={{margin:0}}>Invoice #{invoice.id}</h2>
+        <button className="btn btn-ghost pill" onClick={markPaid}>Mark as paid</button>
+      </div>
 
-      <div className="card" style={{marginBottom:12}}>
-        <div style={{display:'flex', gap:8, justifyContent:'space-between', alignItems:'center'}}>
-          <div className="muted">Client: <b>{invoice.client?.name || invoice.client_id}</b></div>
-          {invoice.status!=='paid' && (
-            <button className="btn secondary" onClick={markPaid} disabled={busy}>
-              {busy ? 'Working…' : 'Mark as paid'}
-            </button>
-          )}
-        </div>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:8, marginTop:8}}>
+      {/* Summary card */}
+      <div className="card" style={{marginTop:12}}>
+        <div className="grid two" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:24}}>
           <div>
-            <div className="muted">Status</div>
-            <div><span className={'status ' + (invoice.status==='part-paid'?'partial':invoice.status)}>{invoice.status}</span></div>
+            <div style={{marginBottom:8}}><strong>Client:</strong>{' '}
+              {invoice.clientId ? (
+                <Link to={`/clients/${invoice.clientId}`}>{invoice.clientName || '—'}</Link>
+              ) : (
+                invoice.clientName || '—'
+              )}
+            </div>
+            <div style={{marginBottom:8}}><strong>Status:</strong>{' '}
+              <span className={`badge ${invoice.status}`}>{invoice.status}</span>
+            </div>
+            <div style={{marginBottom:8}}><strong>Paid</strong><br/>{formatMoney(invoice.paid, invoice.currency)}</div>
+            <div><strong>Due date</strong><br/>{invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : '—'}</div>
           </div>
           <div>
-            <div className="muted">Total</div>
-            <div><Money value={invoice.total} /></div>
-          </div>
-          <div>
-            <div className="muted">Paid</div>
-            <div><Money value={invoice.amount_paid||0} /></div>
-          </div>
-          <div>
-            <div className="muted">Balance</div>
-            <div><Money value={balance} /></div>
-          </div>
-          <div>
-            <div className="muted">Due date</div>
-            <div>{invoice.due_date || '—'}</div>
+            <div style={{marginBottom:8}}><strong>Total</strong><br/>{formatMoney(invoice.total, invoice.currency)}</div>
+            <div><strong>Balance</strong><br/>{formatMoney(invoice.balance, invoice.currency)}</div>
           </div>
         </div>
       </div>
 
-      <div className="card table-wrap" style={{marginBottom:12}}>
+      {/* Payments table */}
+      <div className="card" style={{marginTop:16}}>
         <h3 style={{marginTop:0}}>Payments</h3>
-        <table>
-          <thead><tr><th>Date</th><th>Amount</th><th>Percent</th><th>Method</th><th>Note</th><th></th></tr></thead>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Amount</th>
+              <th>Percent</th>
+              <th>Method</th>
+              <th>Note</th>
+              <th></th>
+            </tr>
+          </thead>
           <tbody>
-            {(invoice.payments||[]).map(p => (
-              <tr key={p.id}>
-                <td>{new Date(p.created_at).toLocaleString()}</td>
-                <td><Money value={p.amount} /></td>
-                <td>{p.percent ?? ''}</td>
-                <td>{p.method ?? ''}</td>
-                <td>{p.note ?? ''}</td>
-                <td><button type="button" className="btn danger" onClick={()=>deletePayment(p.id)} disabled={busy}>Delete</button></td>
-              </tr>
-            ))}
-            {(!invoice.payments || invoice.payments.length===0) && <tr><td colSpan={6} className="muted">No payments yet</td></tr>}
+            {payments?.length ? (
+              payments.map((p) => (
+                <tr key={p.id}>
+                  <td>{p.created_at ? new Date(p.created_at).toLocaleString() : '—'}</td>
+                  <td>{formatMoney(p.amount ?? 0, invoice.currency)}</td>
+                  <td>{p.percent ? `${p.percent}%` : '—'}</td>
+                  <td>{p.method || '—'}</td>
+                  <td>{p.note || '—'}</td>
+                  <td style={{textAlign:'right'}}>
+                    <button className="btn btn-danger pill" onClick={() => deletePayment(p.id)}>Delete</button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr><td colSpan={6} className="muted">No payments yet</td></tr>
+            )}
           </tbody>
         </table>
       </div>
 
-      <div className="card">
+      {/* Add payment */}
+      <div className="card" style={{marginTop:16}}>
         <h3 style={{marginTop:0}}>Add payment</h3>
-        <form onSubmit={addPayment} style={{display:'grid', gridTemplateColumns:'repeat(5,minmax(0,1fr))', gap:8}}>
-          <input type="number" step="0.01" placeholder="Amount (GHS)" value={form.amount} onChange={e=>setForm({...form, amount:e.target.value})} />
-          <input type="number" step="0.01" placeholder="Percent (%)" value={form.percent} onChange={e=>setForm({...form, percent:e.target.value})} />
-          <input placeholder="Method (optional)" value={form.method} onChange={e=>setForm({...form, method:e.target.value})} />
-          <input placeholder="Note (optional)" value={form.note} onChange={e=>setForm({...form, note:e.target.value})} />
-          <input type="datetime-local" value={form.created_at} onChange={e=>setForm({...form, created_at:e.target.value})} />
-          <div style={{gridColumn:'1 / -1', display:'flex', gap:8, justifyContent:'flex-end'}}>
-            <Link to="/invoices" className="border" style={{padding:'8px 12px', borderRadius:8, textDecoration:'none'}}>Back</Link>
-            <button type="submit" className="btn" disabled={busy}>{busy ? 'Saving…' : 'Add payment'}</button>
+        <form onSubmit={addPayment}>
+          <div className="row" style={{display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:12}}>
+            <input
+              className="input"
+              placeholder={`Amount (${invoice.currency})`}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+            <input
+              className="input"
+              placeholder="Percent (%)"
+              value={percent}
+              onChange={(e) => setPercent(e.target.value)}
+            />
+            <input
+              className="input"
+              placeholder="Method (optional)"
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+            />
+            <input
+              className="input"
+              placeholder="Note (optional)"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+            <div style={{display:'flex', justifyContent:'flex-end', alignItems:'center', gap:12}}>
+              <Link to="/invoices" className="btn btn-link">Back</Link>
+              <button className="btn btn-primary pill" disabled={busy}>Add payment</button>
+            </div>
+          </div>
+          <div className="muted" style={{marginTop:8}}>
+            Tip: Fill either <strong>Amount</strong> or <strong>Percent</strong>. If both are filled, Amount wins.
           </div>
         </form>
-        <p className="muted" style={{marginTop:8}}>Tip: Fill either Amount <b>or</b> Percent. If both are filled, Amount wins.</p>
       </div>
     </div>
   );
