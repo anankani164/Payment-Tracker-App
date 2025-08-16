@@ -64,6 +64,9 @@ export default function App(){
     navigate('/login', { replace:true, state:{ from: location }});
   }
 
+  const pill = ({ isActive }) => `pill${isActive ? ' active' : ''}`;
+  const pillBtn = ({ isActive }) => `pill btn${isActive ? ' active' : ''}`;
+
   if (checking) return <div className="page"><div className="muted">Loading…</div></div>;
 
   return (
@@ -76,13 +79,14 @@ export default function App(){
         <nav className="menu">
           {hasToken && (
             <>
-              {/* Keep pill styling on all top menu items */}
-              <NavLink to="/" end className="pill">Home</NavLink>
-              <NavLink to="/clients" className="pill">Clients</NavLink>
-              <NavLink to="/invoices" className="pill">Invoices</NavLink>
-              <NavLink to="/payments" className="pill">Payments</NavLink>
-              {(user && (user.role === 'admin' || user.role === 'superadmin')) && (
-                <NavLink to="/admin" className="pill">Users</NavLink>
+              {/* Restore pill-styled buttons exactly via className */}
+              <NavLink to="/" end className={pillBtn}>Home</NavLink>
+              <NavLink to="/clients" className={pillBtn}>Clients</NavLink>
+              <NavLink to="/invoices" className={pillBtn}>Invoices</NavLink>
+              <NavLink to="/payments" className={pillBtn}>Payments</NavLink>
+              {/* Admin & Superadmin see Users */}
+              {user && (user.role === 'admin' || user.role === 'superadmin') && (
+                <NavLink to="/admin" className={pillBtn}>Users</NavLink>
               )}
             </>
           )}
@@ -91,8 +95,8 @@ export default function App(){
         <div className="authbox">
           {!hasToken ? (
             <div className="auth-actions">
-              <NavLink to="/login" className="pill">Login</NavLink>
-              <NavLink to="/register" className="pill">Register</NavLink>
+              <NavLink to="/login" className={pill}>Login</NavLink>
+              <NavLink to="/register" className={pill}>Register</NavLink>
             </div>
           ) : (
             <div className="auth-user" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
