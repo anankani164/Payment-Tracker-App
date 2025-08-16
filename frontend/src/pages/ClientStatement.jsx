@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
+import { exportCSV, exportPDF } from '../utils/export';
 import Money from '../components/Money';
 
 export default function ClientStatement(){
@@ -33,21 +34,50 @@ export default function ClientStatement(){
   if (error) return <div className="page"><div className="error">{error}</div></div>;
   if (!data) return <div className="page"><div className="muted">No data</div></div>;
 
-  const { client, entries, base_currency, totals } = data;
+  const { client, entries } = data;
+
+  function doExportCSV(){
+    const headers = ['Date','Type','Ref','Description','Invoice','Amount','Running'];
+    const rows = entries.map(e => ({
+      'Date': e.date || '',
+      'Type': e.type,
+      'Ref': e.ref,
+      'Description': e.description || '',
+      'Invoice': e.invoice_id || '',
+      'Amount': e.amount,
+      'Running': e.running
+    }));
+    exportCSV(`client-${client?.id || 'statement'}.csv`, headers, rows);
+  }
+  function doExportPDF(){
+    const headers = ['Date','Type','Ref','Description','Invoice','Amount','Running'];
+    const rows = entries.map(e => ({
+      'Date': e.date || '',
+      'Type': e.type,
+      'Ref': e.ref,
+      'Description': e.description || '',
+      'Invoice': e.invoice_id || '',
+      'Amount': e.amount,
+      'Running': e.running
+    }));
+    exportPDF(`client-${client?.id || 'statement'}.pdf`, headers, rows, { title: `Client ${client?.name || client?.id} Statement`, money:['Amount','Running'], orientation:'landscape' });
+  }
 
   return (
     <div className="page">
       <div style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
         <h1 style={{margin:0}}>Client • {client?.name || `#${client?.id}`}</h1>
-        <Link to="/clients" className="border">Back to clients</Link>
+        <div style={{display:'flex', gap:8, alignItems:'center'}}>
+          <Link to="/clients" className="border">Back to clients</Link>
+          <button className="border" onClick={doExportCSV}>Export CSV</button>
+          <button className="btn" onClick={doExportPDF}>Export PDF</button>
+        </div>
       </div>
 
       <div className="card" style={{marginTop:12}}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:12}}>
           <div><div className="muted">Email</div><div>{client?.email || '—'}</div></div>
           <div><div className="muted">Phone</div><div>{client?.phone || '—'}</div></div>
-          <div><div className="muted">Base Currency</div><div>{base_currency}</div></div>
-          <div><div className="muted">Balance (base)</div><div><Money value={totals?.balance_base||0} /></div></div>
         </div>
       </div>
 
