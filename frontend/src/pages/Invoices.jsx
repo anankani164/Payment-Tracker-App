@@ -1,223 +1,151 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import Money from '../components/Money';
+import { Link } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
+import Money from '../components/Money';
 import { exportCSV, exportPDF } from '../utils/export';
 
-const isCleanInt = (v) => /^\d+$/.test(String(v||'').trim());
-
 export default function Invoices(){
-  const [invoices, setInvoices] = useState([]);
+  const [items, setItems] = useState([]);
   const [clients, setClients] = useState([]);
-  const [params, setParams] = useSearchParams();
-
-  const [filters, setFilters] = useState({
-    status: params.get('status') || '',
-    client_id: params.get('client_id') || '',
-    overdue: params.get('overdue') === 'true',
-    from: params.get('from') || '',
-    to: params.get('to') || '',
-    q: params.get('q') || ''
-  });
-
-  const [show, setShow] = useState(false);
-  const [form, setForm] = useState({client_id:'', total:'', title:'', description:'', due_date:'', created_at:''});
-
-  function applyFilters(newFilters = filters){
-    const sp = new URLSearchParams();
-    Object.entries(newFilters).forEach(([k,v])=>{
-      if (k==='overdue') { if (v) sp.set('overdue','true'); }
-      else if (v) sp.set(k, v);
-    });
-    setParams(sp, { replace:true });
-  }
+  const [status, setStatus] = useState('all');
+  const [clientId, setClientId] = useState('all');
+  const [search, setSearch] = useState('');
+  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   async function load(){
-    try{
-      const qs = params.toString();
-      const invRes = await apiFetch('/api/invoices' + (qs ? `?${qs}` : ''));
-      if (invRes.status === 401) return (window.location.href = '/login');
-      const inv = await invRes.json();
-
-      const cliRes = await apiFetch('/api/clients');
-      if (cliRes.status === 401) return (window.location.href = '/login');
-      const cli = await cliRes.json();
-
-      setInvoices(inv);
-      setClients(cli);
-    }catch(err){
-      console.error('Failed to load invoices', err);
-      setInvoices([]);
-      setClients([]);
-    }
+    setLoading(true);
+    const qs = new URLSearchParams();
+    if (status !== 'all') qs.set('status', status);
+    if (clientId !== 'all') qs.set('client_id', clientId);
+    if (overdueOnly) qs.set('overdue', 'true');
+    if (search) qs.set('q', search);
+    const [invRes, clRes] = await Promise.all([
+      apiFetch('/api/invoices?' + qs.toString()),
+      apiFetch('/api/clients')
+    ]);
+    const inv = invRes.ok ? await invRes.json() : [];
+    const cls = clRes.ok ? await clRes.json() : [];
+    setItems(Array.isArray(inv) ? inv : (inv.items || []));
+    setClients(Array.isArray(cls) ? cls : (cls.items || []));
+    setLoading(false);
   }
-  useEffect(()=>{ load(); },[params]);
+  useEffect(()=>{ load(); /* eslint-disable-next-line */ }, []);
 
-  async function add(){
-    const body = { ...form, client_id: Number(form.client_id), total: Number(form.total) };
-    if(!body.client_id || !(body.total>0)) return alert('Select client and amount > 0');
-    if (body.created_at) {
-      const d = new Date(body.created_at);
-      if (!isNaN(d)) body.created_at = d.toISOString();
-    } else { delete body.created_at; }
-    const r = await apiFetch('/api/invoices', {method:'POST', body: JSON.stringify(body)});
-    if(!r.ok) return alert('Failed to add invoice');
-    setShow(false);
-    setForm({client_id:'', total:'', title:'', description:'', due_date:'', created_at:''});
-    load();
+  function onApply(){ load(); }
+  function onReset(){
+    setStatus('all'); setClientId('all'); setSearch(''); setOverdueOnly(false);
+    setTimeout(load, 0);
   }
 
-  async function markPaid(id){
-    const r = await apiFetch(`/api/invoices/${id}/mark-paid`, {method:'POST'});
-    if(!r.ok) return alert('Failed to mark as paid');
-    load();
-  }
-
-  async function del(id){
-    if(!confirm('Delete this invoice and its payments?')) return;
-    const r = await apiFetch(`/api/invoices/${id}?force=true`, {method:'DELETE'});
-    const data = await r.json().catch(()=>({}));
-    if(!r.ok) return alert(data?.error||'Failed to delete');
-    load();
-  }
-
-  function exportInvoicesCSV(){
-    const headers = ['ID','Client','Title','Total','Paid','Balance','Status','Due Date','Created','Recorded By'];
-    const rows = invoices.map(i => ({
-      'ID': i.id,
-      'Client': i.client?.name || '',
-      'Title': i.title || '',
-      'Total': i.total,
-      'Paid': i.amount_paid || 0,
-      'Balance': i.balance || 0,
-      'Status': i.status + (i.overdue ? ' (overdue)' : ''),
-      'Due Date': i.due_date || '',
-      'Created': i.created_at || '',
-      'Recorded By': i.created_by_user?.name || i.created_by_user?.email || ''
+  function onExportCSV(){
+    const headers = ['#','Client','Title','Total','Paid','Balance','Status','Due','Created','Recorded By'];
+    const rows = items.map((it, i) => ({
+      '#': it.id,
+      'Client': it.client_name || it.client_id,
+      'Title': it.title || '',
+      'Total': it.total || 0,
+      'Paid': Math.max(0, (it.total || 0) - (it.balance || 0)),
+      'Balance': it.balance || 0,
+      'Status': it.status || '',
+      'Due': it.due_date || '',
+      'Created': it.created_at || '',
+      'Recorded By': it.recorded_by || ''
     }));
     exportCSV('invoices.csv', headers, rows);
   }
-
-  function exportInvoicesPDF(){
-    const headers = ['ID','Client','Title','Total','Paid','Balance','Status','Due','Created','Recorded By'];
-    const rows = invoices.map(i => ({
-      'ID': i.id,
-      'Client': i.client?.name || '',
-      'Title': i.title || '',
-      'Total': i.total,
-      'Paid': i.amount_paid || 0,
-      'Balance': i.balance || 0,
-      'Status': i.status + (i.overdue ? ' (overdue)' : ''),
-      'Due': i.due_date || '',
-      'Created': i.created_at || '',
-      'Recorded By': i.created_by_user?.name || i.created_by_user?.email || ''
+  function onExportPDF(){
+    const headers = ['#','Client','Title','Total','Paid','Balance','Status','Due','Created','Recorded By'];
+    const rows = items.map((it, i) => ({
+      '#': it.id,
+      'Client': it.client_name || it.client_id,
+      'Title': it.title || '',
+      'Total': it.total || 0,
+      'Paid': Math.max(0, (it.total || 0) - (it.balance || 0)),
+      'Balance': it.balance || 0,
+      'Status': it.status || '',
+      'Due': it.due_date || '',
+      'Created': it.created_at || '',
+      'Recorded By': it.recorded_by || ''
     }));
-    exportPDF('invoices.pdf', headers, rows, { title:'Invoices', money:['Total','Paid','Balance'], orientation:'landscape' });
+    exportPDF('invoices.pdf', headers, rows, { orientation:'landscape', money:['Total','Paid','Balance'] });
   }
 
   return (
     <div className="page">
       <h1>Invoices</h1>
 
-      {/* Filters */}
-      <div className="filters">
-        <select value={filters.status} onChange={e=>setFilters({...filters, status:e.target.value})}>
-          <option value="">All statuses</option>
-          <option value="pending">Pending</option>
-          <option value="part-paid">Part-paid</option>
-          <option value="paid">Paid</option>
-          <option value="overdue">Overdue</option>
-        </select>
-        <select value={filters.client_id} onChange={e=>setFilters({...filters, client_id:e.target.value})}>
-          <option value="">All clients</option>
-          {clients.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        <input type="date" value={filters.from} onChange={e=>setFilters({...filters, from:e.target.value})} />
-        <input type="date" value={filters.to} onChange={e=>setFilters({...filters, to:e.target.value})} />
-        <input placeholder="Search title/description" value={filters.q} onChange={e=>setFilters({...filters, q:e.target.value})} />
-        <label style={{display:'flex', alignItems:'center', gap:6}}>
-          <input type="checkbox" checked={filters.overdue} onChange={e=>setFilters({...filters, overdue:e.target.checked})} /> Overdue
-        </label>
-        <button className="border" onClick={()=>applyFilters()}>Apply</button>
-        <button className="border" onClick={()=>{ setFilters({status:'',client_id:'',overdue:false,from:'',to:'',q:''}); applyFilters({}); }}>Reset</button>
-
-        {/* Exports */}
-        <button className="border" onClick={exportInvoicesCSV}>Export CSV</button>
-        <button className="btn" onClick={exportInvoicesPDF}>Export PDF</button>
-
-        <button className="btn" style={{marginLeft:'auto'}} onClick={()=>setShow(true)}>Add Invoice</button>
+      {/* Filters laid out to match screenshots */}
+      <div className="filters card" style={{marginBottom:14}}>
+        <div className="left">
+          <select value={status} onChange={e=>setStatus(e.target.value)}>
+            <option value="all">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="part-paid">Part paid</option>
+            <option value="paid">Paid</option>
+          </select>
+          <select value={clientId} onChange={e=>setClientId(e.target.value)}>
+            <option value="all">All clients</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)} />
+          <label style={{display:'inline-flex', alignItems:'center', gap:8}}>
+            <input type="checkbox" checked={overdueOnly} onChange={e=>setOverdueOnly(e.target.checked)} />
+            Overdue
+          </label>
+          <button className="pill btn" onClick={onApply}>Apply</button>
+          <button className="pill secondary" onClick={onReset}>Reset</button>
+        </div>
+        <div className="right">
+          <button className="pill border" onClick={onExportCSV}>Export CSV</button>
+          <button className="pill btn" onClick={onExportPDF}>Export PDF</button>
+        </div>
       </div>
 
-      <table className="table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Client</th>
-            <th>Title</th>
-            <th>Total</th>
-            <th>Paid</th>
-            <th>Balance</th>
-            <th>Status</th>
-            <th>Due</th>
-            <th>Created</th>
-            <th>Recorded By</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {invoices.map(inv=>{
-            const cidRaw = inv.client_id ?? inv.client?.id ?? inv.clientId ?? null;
-            const cidStr = cidRaw != null ? String(cidRaw).trim() : null;
-            const canLink = cidStr && isCleanInt(cidStr);
-            const label = inv.client?.name || (canLink ? `#${cidStr}` : '');
-            return (
-              <tr key={inv.id}>
-                <td>{inv.id}</td>
-                <td>{canLink ? <Link to={`/clients/${cidStr}`}>{label}</Link> : label}</td>
-                <td>{inv.title||''}</td>
-                <td><Money value={inv.total} /></td>
-                <td><Money value={inv.amount_paid||0} /></td>
-                <td><Money value={inv.balance||0} /></td>
-                <td>{inv.status}{inv.overdue?' • Overdue':''}</td>
-                <td>{inv.due_date||''}</td>
-                <td>{inv.created_at||''}</td>
-                <td>{inv.created_by_user?.name || inv.created_by_user?.email || '—'}</td>
-                <td style={{display:'flex', gap:8, flexWrap:'wrap'}}>
-                  {inv.status!=='paid' && <button className="border" onClick={()=>markPaid(inv.id)}>Mark paid</button>}
-                  <Link className="border" to={`/invoices/${inv.id}`}>View</Link>
-                  <button className="danger" onClick={()=>del(inv.id)}>Delete</button>
-                </td>
-              </tr>
-            );
-          })}
-          {invoices.length===0 && (
-            <tr><td colSpan={11} className="muted">No invoices found</td></tr>
-          )}
-        </tbody>
-      </table>
-
-      {show && (
-        <div className="modal">
-          <div className="card" style={{maxWidth:540}}>
-            <h3 style={{marginTop:0}}>Add invoice</h3>
-            <div className="form-grid">
-              <select value={form.client_id} onChange={e=>setForm({...form, client_id:e.target.value})}>
-                <option value="">Select client</option>
-                {clients.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <input placeholder="Title" value={form.title} onChange={e=>setForm({...form, title:e.target.value})} />
-              <input placeholder="Description" value={form.description} onChange={e=>setForm({...form, description:e.target.value})} />
-              <input type="number" step="0.01" placeholder="Total amount" value={form.total} onChange={e=>setForm({...form, total:e.target.value})} />
-              <input type="date" value={form.due_date} onChange={e=>setForm({...form, due_date:e.target.value})} />
-              <input type="datetime-local" value={form.created_at} onChange={e=>setForm({...form, created_at:e.target.value})} />
-            </div>
-            <div style={{display:'flex', gap:8, justifyContent:'flex-end', marginTop:12}}>
-              <button onClick={()=>setShow(false)} className="border">Cancel</button>
-              <button onClick={add} className="btn">Save</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="card">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Client</th>
+              <th>Title</th>
+              <th>Total</th>
+              <th>Paid</th>
+              <th>Balance</th>
+              <th>Status</th>
+              <th>Due</th>
+              <th>Created</th>
+              <th>Recorded By</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(it => {
+              const paid = Math.max(0, (it.total || 0) - (it.balance || 0)); // UI-only computed
+              return (
+                <tr key={it.id}>
+                  <td>{it.id}</td>
+                  <td><Link to={`/clients/${it.client_id}`}>{it.client_name || it.client_id}</Link></td>
+                  <td>{it.title || '—'}</td>
+                  <td><Money value={it.total || 0} /></td>
+                  <td><Money value={paid} /></td>
+                  <td><Money value={it.balance || 0} /></td>
+                  <td><span className="pill border">{it.status || '—'}</span></td>
+                  <td>{it.due_date || '—'}</td>
+                  <td>{it.created_at || '—'}</td>
+                  <td>{it.recorded_by || '—'}</td>
+                  <td>
+                    <div className="actions-inline">
+                      <Link to={`/invoices/${it.id}`}>View</Link>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {items.length===0 && <tr><td colSpan={11} className="muted">No invoices found</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
