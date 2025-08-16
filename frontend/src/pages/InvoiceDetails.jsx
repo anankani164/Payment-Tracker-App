@@ -1,122 +1,174 @@
-// frontend/src/pages/InvoiceDetails.jsx
-// Minimal change: robust fetch + response-shape compatibility.
-// UI classes left generic (page/card/table/btn) to avoid style changes.
-
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
-
-function fmt2(n){
-  const v = Number(n || 0);
-  if (!isFinite(v)) return '0.00';
-  return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+import Money from '../components/Money';
+import { fmtMoney } from '../utils/format';
 
 export default function InvoiceDetails(){
-  const { id, invoiceId } = useParams();
-  const theId = id || invoiceId;
-
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
+  const { id } = useParams();
   const [invoice, setInvoice] = useState(null);
-  const [payments, setPayments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState({ amount:'', percent:'', method:'', note:'', created_at:'' });
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
-    async function load(){
-      try{
-        setLoading(true);
-        setErr('');
-        const res = await apiFetch(`/api/invoices/${theId}`);
-        if (!res.ok){
-          const txt = await res.text().catch(()=>'Failed');
-          throw new Error(txt || `HTTP ${res.status}`);
-        }
-        const data = await res.json();
-        if (!alive) return;
-        const inv = data.invoice ?? data; // accept {invoice:{...}} or flat
-        const pays = data.payments ?? data.invoice?.payments ?? [];
-        setInvoice(inv);
-        setPayments(Array.isArray(pays) ? pays : []);
-      }catch(e){
-        if (!alive) return;
-        setErr(e.message || 'Failed to load invoice');
-      }finally{
-        if (alive) setLoading(false);
-      }
+  async function load(){
+    try{
+      setLoading(true);
+      const r = await fetch(`/api/invoices/${id}`);
+      const data = await r.json();
+      setInvoice(data);
+      setError('');
+    }catch(e){
+      setError('Failed to load invoice');
+    }finally{
+      setLoading(false);
     }
-    if (theId) load();
-    return () => { alive = false; };
-  }, [theId]);
+  }
+  useEffect(()=>{ load(); }, [id]);
 
-  const totals = useMemo(() => {
-    if (!invoice) return { total:0, paid:0, balance:0 };
-    const total = Number(invoice.total||0);
-    const paid  = Number(invoice.amount_paid ?? invoice.paid ?? 0);
-    const balance = Number(invoice.balance ?? (total - paid));
-    return { total, paid, balance };
-  }, [invoice]);
+  async function markPaid(){
+    try{
+      setBusy(true);
+      const r = await apiFetch(`/api/invoices/${id}/mark-paid`, { method:'POST' });
+      if(!r.ok){
+        const d = await r.json().catch(()=>({}));
+        throw new Error(d?.error || 'Failed to mark paid');
+      }
+      await load();
+    }catch(err){
+      alert(err.message || 'Unauthorized (please login)');
+    }finally{
+      setBusy(false);
+    }
+  }
 
-  if (!theId) return <div className="page"><div className="muted">No invoice selected.</div></div>;
-  if (loading) return <div className="page"><div className="muted">Loading invoice…</div></div>;
-  if (err) return <div className="page"><div className="error">{err}</div></div>;
-  if (!invoice) return <div className="page"><div className="muted">Invoice not found.</div></div>;
+  async function addPayment(e){
+    e.preventDefault();
+    const amount = form.amount ? Number(form.amount) : null;
+    const percent = form.percent ? Number(form.percent) : null;
+    if ((!amount || amount<=0) && (!percent || percent<=0)) {
+      return alert('Enter an amount or percent > 0');
+    }
+    setBusy(true);
+    try{
+      const body = { invoice_id: Number(id) };
+      if (amount) body.amount = amount;
+      if (percent) body.percent = percent;
+      if (form.method) body.method = form.method;
+      if (form.note) body.note = form.note;
+      if (form.created_at) {
+        const d = new Date(form.created_at);
+        if (!isNaN(d)) body.created_at = d.toISOString();
+      }
+      const res = await apiFetch('/api/payments', { method:'POST', body: JSON.stringify(body) });
+      if(!res.ok){
+        const d = await res.json().catch(()=>({}));
+        throw new Error(d?.error || 'Failed to add payment');
+      }
+      setForm({ amount:'', percent:'', method:'', note:'', created_at:'' });
+      await load();
+    }catch(err){
+      alert(err.message || 'Unauthorized (please login)');
+    }finally{
+      setBusy(false);
+    }
+  }
 
-  const client = invoice.client || (invoice.client_id ? { id: invoice.client_id, name: invoice.clientName || invoice.client_name, email: invoice.client_email } : null);
+  async function deletePayment(pid){
+    if(!confirm('Delete this payment? This will update the invoice balance.')) return;
+    try{
+      setBusy(true);
+      const res = await apiFetch(`/api/payments/${pid}`, { method:'DELETE' });
+      if(!res.ok){
+        const d = await res.json().catch(()=>({}));
+        throw new Error(d?.error || 'Failed to delete');
+      }
+      await load();
+    }catch(err){
+      alert(err.message || 'Unauthorized (please login)');
+    }finally{
+      setBusy(false);
+    }
+  }
+
+  if (loading) return <div className="card"><p>Loading…</p></div>;
+  if (error) return <div className="card"><p style={{color:'crimson'}}>{error}</p></div>;
+  if (!invoice) return <div className="card"><p>Not found</p></div>;
+
+  const balance = Number(invoice.total) - Number(invoice.amount_paid||0);
 
   return (
-    <div className="page">
-      <div className="toolbar" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
-        <div>
-          <h2 style={{margin:'0 0 4px'}}>Invoice #{invoice.id}</h2>
-          <div className="muted" style={{fontSize:13}}>
-            {client ? (<><Link to={`/clients`} state={{ highlight: client.id }}>{client.name}</Link>{client.email ? ` • ${client.email}` : ''}</>) : '—'}
-          </div>
-          <div className="muted" style={{fontSize:12, marginTop:4}}>
-            Status: {invoice.status || 'pending'}{invoice.due_date ? ` • Due ${new Date(invoice.due_date).toLocaleDateString()}` : ''}
-          </div>
+    <div>
+      <h1 className="page-title">Invoice #{invoice.id}</h1>
+
+      <div className="card" style={{marginBottom:12}}>
+        <div style={{display:'flex', gap:8, justifyContent:'space-between', alignItems:'center'}}>
+          <div className="muted">Client: <b>{invoice.client?.name || invoice.client_id}</b></div>
+          {invoice.status!=='paid' && (
+            <button className="btn secondary" onClick={markPaid} disabled={busy}>
+              {busy ? 'Working…' : 'Mark as paid'}
+            </button>
+          )}
         </div>
-        <div style={{display:'flex', gap:8}}>
-          <Link className="btn" to="/invoices">Back</Link>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:8, marginTop:8}}>
+          <div>
+            <div className="muted">Status</div>
+            <div><span className={'status ' + (invoice.status==='part-paid'?'partial':invoice.status)}>{invoice.status}</span></div>
+          </div>
+          <div>
+            <div className="muted">Total</div>
+            <div><Money value={invoice.total} /></div>
+          </div>
+          <div>
+            <div className="muted">Paid</div>
+            <div><Money value={invoice.amount_paid||0} /></div>
+          </div>
+          <div>
+            <div className="muted">Balance</div>
+            <div><Money value={balance} /></div>
+          </div>
+          <div>
+            <div className="muted">Due date</div>
+            <div>{invoice.due_date || '—'}</div>
+          </div>
         </div>
       </div>
 
-      <div className="card" style={{padding:16, marginBottom:16}}>
-        <div style={{display:'flex', gap:24, flexWrap:'wrap'}}>
-          <div><div className="muted" style={{fontSize:12}}>Total</div><div style={{fontWeight:600}}>{fmt2(totals.total)} {invoice.currency_code || ''}</div></div>
-          <div><div className="muted" style={{fontSize:12}}>Paid</div><div style={{fontWeight:600}}>{fmt2(totals.paid)} {invoice.currency_code || ''}</div></div>
-          <div><div className="muted" style={{fontSize:12}}>Balance</div><div style={{fontWeight:600}}>{fmt2(totals.balance)} {invoice.currency_code || ''}</div></div>
-          {invoice.recorded_by && (<div><div className="muted" style={{fontSize:12}}>Recorded by</div><div style={{fontWeight:600}}>{invoice.recorded_by}</div></div>)}
-        </div>
-        {invoice.description ? <div style={{marginTop:12}} className="muted">{invoice.description}</div> : null}
-      </div>
-
-      <div className="card" style={{padding:0, overflow:'hidden'}}>
-        <table className="table" style={{width:'100%', borderCollapse:'collapse'}}>
-          <thead>
-            <tr>
-              <th style={{textAlign:'left', padding:'10px 12px'}}>Date</th>
-              <th style={{textAlign:'left', padding:'10px 12px'}}>Method</th>
-              <th style={{textAlign:'left', padding:'10px 12px'}}>Note</th>
-              <th style={{textAlign:'right', padding:'10px 12px'}}>Amount</th>
-              <th style={{textAlign:'left', padding:'10px 12px'}}>Recorded by</th>
-            </tr>
-          </thead>
+      <div className="card table-wrap" style={{marginBottom:12}}>
+        <h3 style={{marginTop:0}}>Payments</h3>
+        <table>
+          <thead><tr><th>Date</th><th>Amount</th><th>Percent</th><th>Method</th><th>Note</th><th></th></tr></thead>
           <tbody>
-            {payments.map(p => (
+            {(invoice.payments||[]).map(p => (
               <tr key={p.id}>
-                <td style={{padding:'8px 12px'}}>{p.created_at ? new Date(p.created_at).toLocaleDateString() : ''}</td>
-                <td style={{padding:'8px 12px'}}>{p.method || ''}</td>
-                <td style={{padding:'8px 12px'}}>{p.note || ''}</td>
-                <td style={{padding:'8px 12px', textAlign:'right'}}>{fmt2(p.amount)} {p.currency_code || invoice.currency_code || ''}</td>
-                <td style={{padding:'8px 12px'}}>{p.recorded_by || p?.recorded_by_user?.name || ''}</td>
+                <td>{new Date(p.created_at).toLocaleString()}</td>
+                <td><Money value={p.amount} /></td>
+                <td>{p.percent ?? ''}</td>
+                <td>{p.method ?? ''}</td>
+                <td>{p.note ?? ''}</td>
+                <td><button type="button" className="btn danger" onClick={()=>deletePayment(p.id)} disabled={busy}>Delete</button></td>
               </tr>
             ))}
-            {payments.length === 0 && (
-              <tr><td colSpan={5} className="muted" style={{padding:'12px'}}>No payments yet.</td></tr>
-            )}
+            {(!invoice.payments || invoice.payments.length===0) && <tr><td colSpan={6} className="muted">No payments yet</td></tr>}
           </tbody>
         </table>
+      </div>
+
+      <div className="card">
+        <h3 style={{marginTop:0}}>Add payment</h3>
+        <form onSubmit={addPayment} style={{display:'grid', gridTemplateColumns:'repeat(5,minmax(0,1fr))', gap:8}}>
+          <input type="number" step="0.01" placeholder="Amount (GHS)" value={form.amount} onChange={e=>setForm({...form, amount:e.target.value})} />
+          <input type="number" step="0.01" placeholder="Percent (%)" value={form.percent} onChange={e=>setForm({...form, percent:e.target.value})} />
+          <input placeholder="Method (optional)" value={form.method} onChange={e=>setForm({...form, method:e.target.value})} />
+          <input placeholder="Note (optional)" value={form.note} onChange={e=>setForm({...form, note:e.target.value})} />
+          <input type="datetime-local" value={form.created_at} onChange={e=>setForm({...form, created_at:e.target.value})} />
+          <div style={{gridColumn:'1 / -1', display:'flex', gap:8, justifyContent:'flex-end'}}>
+            <Link to="/invoices" className="border" style={{padding:'8px 12px', borderRadius:8, textDecoration:'none'}}>Back</Link>
+            <button type="submit" className="btn" disabled={busy}>{busy ? 'Saving…' : 'Add payment'}</button>
+          </div>
+        </form>
+        <p className="muted" style={{marginTop:8}}>Tip: Fill either Amount <b>or</b> Percent. If both are filled, Amount wins.</p>
       </div>
     </div>
   );
