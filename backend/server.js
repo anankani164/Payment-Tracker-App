@@ -1,7 +1,7 @@
 // backend/server.js
-// Adds: Super Admin user management + Multicurrency support
-// Keeps: Existing endpoints (clients, invoices, payments, statement)
-// + Back-compat aliases so older UI fields render: paid, recorded_by, created
+// Backend with strict invoice details shape: { invoice: {...}, payments: [...] }
+// Also keeps aliases for UI (paid, recorded_by, created).
+// Superadmin/admin + multicurrency preserved.
 
 import express from 'express';
 import cors from 'cors';
@@ -32,8 +32,7 @@ function loadDB(){
 }
 function saveDB(db){
   const data = db.export();
-  const buffer = Buffer.from(data);
-  fs.writeFileSync(DB_FILE, buffer);
+  fs.writeFileSync(DB_FILE, Buffer.from(data));
 }
 function rowToObj(columns, row){
   const o = {};
@@ -294,6 +293,8 @@ app.put('/api/clients/:id', auth, (req,res)=>{
 });
 app.delete('/api/clients/:id', auth, (req,res)=>{
   const id = Number(req.params.id);
+  run(db, `DELETE FROM payments WHERE invoice_id IN (SELECT id FROM invoices WHERE client_id=?)`, [id]);
+  run(db, `DELETE FROM invoices WHERE client_id=?`, [id]);
   run(db, `DELETE FROM clients WHERE id=?`, [id]);
   saveDB(db);
   res.json({ ok:true });
@@ -360,15 +361,17 @@ app.get('/api/invoices', auth, (req,res)=>{
       total_base, amount_paid_base: paid_base, balance_base,
       client: r.client_id ? { id:r.client_id, name:r.client_name, email:r.client_email } : null,
       created_by_user: r.created_by_id ? { id:r.created_by_id, name:r.created_by_name, email:r.created_by_email } : null,
-      // ---- Back-compat aliases for existing UI columns
-      paid: amount_paid,                         // UI "Paid"
-      recorded_by: r.created_by_name || '',      // UI "Recorded By"
-      created: r.created_at                      // UI "Created"
+      // Back-compat aliases for existing UI columns
+      paid: amount_paid,
+      recorded_by: r.created_by_name || '',
+      created: r.created_at,
+      clientName: r.client_name // handy alias some UIs expect
     };
   });
   res.json(rows);
 });
 
+// STRICT shape: { invoice: {...}, payments: [...] }
 app.get('/api/invoices/:id', auth, (req,res)=>{
   const id = Number(req.params.id);
   const inv = getOne(db, `
@@ -396,7 +399,6 @@ app.get('/api/invoices/:id', auth, (req,res)=>{
   `, [id]).map(p => ({
     ...p,
     recorded_by_user: p.created_by_id ? { id:p.created_by_id, name:p.created_by_name, email:p.created_by_email } : null,
-    // Back-compat alias
     recorded_by: p.created_by_name || ''
   }));
 
@@ -406,17 +408,19 @@ app.get('/api/invoices/:id', auth, (req,res)=>{
   const amount_paid = Number(inv.amount_paid_in_inv||0);
   const balance = Number(inv.total||0) - amount_paid;
 
-  res.json({
+  const invoicePayload = {
     ...inv,
     amount_paid,
+    paid: amount_paid,
     balance,
     total_base, amount_paid_base, balance_base,
     client: inv.client_id ? { id:inv.client_id, name:inv.client_name, email:inv.client_email } : null,
     created_by_user: inv.created_by_id ? { id:inv.created_by_id, name:inv.created_by_name, email:inv.created_by_email } : null,
-    // Back-compat alias for header area
     recorded_by: inv.created_by_name || '',
-    payments: pays
-  });
+    clientName: inv.client_name
+  };
+
+  res.json({ invoice: invoicePayload, payments: pays });
 });
 
 app.post('/api/invoices', auth, (req,res)=>{
@@ -490,7 +494,6 @@ app.get('/api/payments', auth, (req,res)=>{
     amount_base: Number(r.amount||0) * coalesceRate(r.rate_to_base || r.invoice_rate_to_base),
     recorded_by_user: r.created_by_id ? { id:r.created_by_id, name:r.created_by_name, email:r.created_by_email } : null,
     client: r.client_id ? { id:r.client_id, name:r.client_name, email:r.client_email } : null,
-    // Back-compat alias for UI table
     recorded_by: r.created_by_name || ''
   }));
   res.json(rows);
@@ -619,4 +622,4 @@ app.get('/api/clients/:id/statement', auth, (req, res) => {
   });
 });
 
-app.listen(PORT, ()=> console.log('Backend (users+multicurrency) running on :' + PORT));
+app.listen(PORT, ()=> console.log('Backend running on :' + PORT));
