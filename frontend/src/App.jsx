@@ -14,7 +14,7 @@ import Register from './pages/Register.jsx';
 import { apiFetch } from './utils/api';
 
 import './brand.css';
-import './brand.override.css'; // keep your styling overrides
+import './brand.override.css';
 
 function useAuth() {
   const [user, setUser] = useState(null);
@@ -24,12 +24,8 @@ function useAuth() {
     let alive = true;
     (async () => {
       try {
-        // If there is no token, skip calling /me to avoid a flash of auth error.
         const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-        if (!token) {
-          if (alive) { setUser(null); setChecking(false); }
-          return;
-        }
+        if (!token) { if (alive) { setUser(null); setChecking(false); } return; }
         const res = await apiFetch('/api/auth/me');
         if (res.ok) {
           const data = await res.json();
@@ -52,52 +48,40 @@ function useAuth() {
 function RequireAuth({ children }) {
   const location = useLocation();
   const hasToken = !!(localStorage.getItem('token') || sessionStorage.getItem('token'));
-  if (!hasToken) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
-  }
+  if (!hasToken) return <Navigate to="/login" replace state={{ from: location }} />;
   return children;
 }
 
-export default function App() {
+export default function App(){
   const navigate = useNavigate();
   const location = useLocation();
   const { user, setUser, checking } = useAuth();
-
   const hasToken = !!(localStorage.getItem('token') || sessionStorage.getItem('token'));
 
-  function logout() {
-    try {
-      localStorage.removeItem('token');
-      sessionStorage.removeItem('token');
-    } catch {}
+  function logout(){
+    try { localStorage.removeItem('token'); sessionStorage.removeItem('token'); } catch {}
     setUser(null);
-    navigate('/login', { replace: true, state: { from: location } });
+    navigate('/login', { replace:true, state:{ from: location }});
   }
 
-  if (checking) {
-    // Keep this minimal to avoid UI shifts; no style changes.
-    return <div className="page"><div className="muted">Loading…</div></div>;
-  }
+  if (checking) return <div className="page"><div className="muted">Loading…</div></div>;
 
   return (
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          {/* Keep your existing logo/brand area as-is; no visual changes */}
           <NavLink to="/" className="brand-link">Dashboard</NavLink>
         </div>
 
         <nav className="menu">
-          {/* Keep your existing menu style/classes; no changes to look */}
           {hasToken && (
             <>
-              <NavLink to="/" end>Home</NavLink>
-              <NavLink to="/clients">Clients</NavLink>
-              <NavLink to="/invoices">Invoices</NavLink>
-              <NavLink to="/payments">Payments</NavLink>
-
-              {/* Admin-only Users link (goes to your existing Admin page) */}
-              {user && (user.role === 'admin' || user.role === 'superadmin') && (
+              {/* Keep pill styling on all top menu items */}
+              <NavLink to="/" end className="pill">Home</NavLink>
+              <NavLink to="/clients" className="pill">Clients</NavLink>
+              <NavLink to="/invoices" className="pill">Invoices</NavLink>
+              <NavLink to="/payments" className="pill">Payments</NavLink>
+              {(user && (user.role === 'admin' || user.role === 'superadmin')) && (
                 <NavLink to="/admin" className="pill">Users</NavLink>
               )}
             </>
@@ -112,9 +96,7 @@ export default function App() {
             </div>
           ) : (
             <div className="auth-user" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="muted">
-                {user?.name ? `Hi, ${user.name}` : (user?.email || '')}
-              </span>
+              <span className="muted">{user?.name ? `Hi, ${user.name}` : (user?.email || '')}</span>
               <button className="border" onClick={logout}>Log out</button>
             </div>
           )}
@@ -123,26 +105,24 @@ export default function App() {
 
       <main className="main">
         <Routes>
-          {/* Public routes (when not logged in) */}
-          <Route path="/login" element={hasToken ? <Navigate to="/" replace /> : <Login onLoggedIn={() => navigate('/', { replace: true })} />} />
-          <Route path="/register" element={hasToken ? <Navigate to="/" replace /> : <Register onRegistered={() => navigate('/login', { replace: true })} />} />
+          {/* Public */}
+          <Route path="/login" element={hasToken ? <Navigate to="/" replace /> : <Login onLoggedIn={() => navigate('/', { replace:true })} />} />
+          <Route path="/register" element={hasToken ? <Navigate to="/" replace /> : <Register onRegistered={() => navigate('/login', { replace:true })} />} />
 
-          {/* Private routes */}
+          {/* Private */}
           <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
           <Route path="/clients" element={<RequireAuth><Clients /></RequireAuth>} />
-
-          {/* IMPORTANT: Support BOTH statement routes */}
+          {/* Support BOTH forms to avoid broken links */}
           <Route path="/clients/:id" element={<RequireAuth><ClientStatement /></RequireAuth>} />
           <Route path="/clients/:id/statement" element={<RequireAuth><ClientStatement /></RequireAuth>} />
-
           <Route path="/invoices" element={<RequireAuth><Invoices /></RequireAuth>} />
           <Route path="/invoices/:id" element={<RequireAuth><InvoiceDetails /></RequireAuth>} />
           <Route path="/payments" element={<RequireAuth><Payments /></RequireAuth>} />
 
-          {/* Admin page for user management (visible via menu only for admin/superadmin) */}
+          {/* Admin (user management UI) */}
           <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
 
-          {/* Fallback: go to dashboard if logged in, else to login */}
+          {/* Fallback */}
           <Route path="*" element={<Navigate to={hasToken ? '/' : '/login'} replace />} />
         </Routes>
       </main>
