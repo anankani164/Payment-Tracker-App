@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Money from '../components/Money';
 import { apiFetch } from '../utils/api';
-import { exportCSV, exportPDF, formatMoney } from '../utils/export';
+import { exportCSV, exportPDF } from '../utils/export';
 
 const isCleanInt = (v) => /^\d+$/.test(String(v||'').trim());
 
@@ -28,8 +28,8 @@ export default function Payments(){
   }
 
   async function load(){
-    const qs = params.toString();
     try{
+      const qs = params.toString();
       const pRes = await apiFetch('/api/payments' + (qs ? `?${qs}` : ''));
       if (pRes.status === 401) return (window.location.href = '/login');
       const p = await pRes.json();
@@ -78,7 +78,7 @@ export default function Payments(){
       'ID': p.id,
       'Invoice': p.invoice_id,
       'Client': p.client?.name || '',
-      'Amount': formatMoney(p.amount),
+      'Amount': p.amount,
       'Method': p.method || '',
       'Note': p.note || '',
       'Created': p.created_at || '',

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Money from '../components/Money';
 import { apiFetch } from '../utils/api';
-import { exportCSV, exportPDF, formatMoney } from '../utils/export';
+import { exportCSV, exportPDF } from '../utils/export';
 
 const isCleanInt = (v) => /^\d+$/.test(String(v||'').trim());
 
@@ -33,8 +33,8 @@ export default function Invoices(){
   }
 
   async function load(){
-    const qs = params.toString();
     try{
+      const qs = params.toString();
       const invRes = await apiFetch('/api/invoices' + (qs ? `?${qs}` : ''));
       if (invRes.status === 401) return (window.location.href = '/login');
       const inv = await invRes.json();
@@ -87,9 +87,9 @@ export default function Invoices(){
       'ID': i.id,
       'Client': i.client?.name || '',
       'Title': i.title || '',
-      'Total': formatMoney(i.total),
-      'Paid': formatMoney(i.amount_paid || 0),
-      'Balance': formatMoney(i.balance || 0),
+      'Total': i.total,
+      'Paid': i.amount_paid || 0,
+      'Balance': i.balance || 0,
       'Status': i.status + (i.overdue ? ' (overdue)' : ''),
       'Due Date': i.due_date || '',
       'Created': i.created_at || '',
