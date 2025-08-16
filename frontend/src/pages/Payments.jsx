@@ -1,113 +1,79 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
-import Money from '../components/Money';
-import { exportCSV, exportPDF } from '../utils/export';
+import { formatAmount } from '../utils/format';
+import { downloadCSV, downloadPDF } from '../utils/export';
+import { Link } from 'react-router-dom';
 
 export default function Payments(){
-  const [items, setItems] = useState([]);
+  const [rows, setRows] = useState([]);
   const [clients, setClients] = useState([]);
-  const [clientId, setClientId] = useState('all');
-  const [invoiceId, setInvoiceId] = useState('');
-  const [method, setMethod] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({ client:'all', invoice:'', q:'' });
 
   async function load(){
-    setLoading(true);
-    const qs = new URLSearchParams();
-    if (clientId !== 'all') qs.set('client_id', clientId);
-    if (invoiceId) qs.set('invoice_id', invoiceId);
-    if (method) qs.set('method', method);
-    const [p, c] = await Promise.all([
-      apiFetch('/api/payments?' + qs.toString()),
-      apiFetch('/api/clients')
-    ]);
-    const prow = p.ok ? await p.json() : [];
-    const crow = c.ok ? await c.json() : [];
-    setItems(Array.isArray(prow) ? prow : (prow.items || []));
-    setClients(Array.isArray(crow) ? crow : (crow.items || []));
-    setLoading(false);
+    const [pr, cr] = await Promise.all([apiFetch('/api/payments'), apiFetch('/api/clients')]);
+    setRows(await pr.json());
+    setClients(await cr.json());
   }
-  useEffect(()=>{ load(); /* eslint-disable-next-line */ }, []);
+  useEffect(()=>{ load(); },[]);
 
-  function onExportCSV(){
-    const headers = ['Date','Client','Amount','Percent','Invoice','Recorded By','Method','Note'];
-    const rows = items.map(x => ({
-      'Date': x.created_at || '',
-      'Client': x.client_name || '',
-      'Amount': x.amount || 0,
-      'Percent': x.percent || '',
-      'Invoice': x.invoice_id ? ('#' + x.invoice_id) : '',
-      'Recorded By': x.recorded_by || '',
-      'Method': x.method || '',
-      'Note': x.note || ''
-    }));
-    exportCSV('payments.csv', headers, rows);
+  const filtered = rows.filter(r => {
+    if (filters.client!=='all' && String(r.client_id)!==String(filters.client)) return false;
+    if (filters.invoice && String(r.invoice_id)!==String(filters.invoice)) return false;
+    if (filters.q && !(`${r.note||''}`.toLowerCase().includes(filters.q.toLowerCase()))) return false;
+    return true;
+  });
+
+  function exportCsv(){
+    downloadCSV(filtered.map(r => ({
+      id:r.id, client:r.client_name, invoice:`#${r.invoice_id}`, amount:r.amount, recorded_by:r.recorded_by_name, method:r.method||'', note:r.note||'', created:r.created_at
+    })), 'payments.csv');
   }
-  function onExportPDF(){
-    const headers = ['Date','Client','Amount','Percent','Invoice','Recorded By','Method','Note'];
-    const rows = items.map(x => ({
-      'Date': x.created_at || '',
-      'Client': x.client_name || '',
-      'Amount': x.amount || 0,
-      'Percent': x.percent || '',
-      'Invoice': x.invoice_id ? ('#' + x.invoice_id) : '',
-      'Recorded By': x.recorded_by || '',
-      'Method': x.method || '',
-      'Note': x.note || ''
-    }));
-    exportPDF('payments.pdf', headers, rows, { orientation:'landscape', money:['Amount'] });
+  function exportPdf(){
+    downloadPDF({
+      title:'Payments',
+      columns:['Date','Client','Amount','Invoice','Recorded By','Method','Note'],
+      rows: filtered.map(r => [r.created_at, r.client_name, formatAmount(r.amount, r.currency), `#${r.invoice_id}`, r.recorded_by_name || '—', r.method||'—', r.note||'—'])
+    }, 'payments.pdf', { landscape:true });
   }
 
   return (
-    <div className="page">
+    <div>
       <h1>Payments</h1>
-
-      <div className="filters card">
-        <div className="left" style={{gridTemplateColumns:'160px 160px 160px auto auto'}}>
-          <select value={clientId} onChange={e=>setClientId(e.target.value)}>
+      <div className="toolbar">
+        <div className="row left">
+          <select className="pill" value={filters.client} onChange={e=>setFilters(f=>({...f,client:e.target.value}))}>
             <option value="all">All clients</option>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <input placeholder="Invoice ID" value={invoiceId} onChange={e=>setInvoiceId(e.target.value)} />
-          <input placeholder="Method" value={method} onChange={e=>setMethod(e.target.value)} />
-          <button className="pill btn" onClick={load}>Apply</button>
-          <button className="pill secondary" onClick={()=>{ setClientId('all'); setInvoiceId(''); setMethod(''); setTimeout(load,0); }}>Reset</button>
+          <input className="pill" placeholder="Invoice ID" value={filters.invoice} onChange={e=>setFilters(f=>({...f,invoice:e.target.value}))} />
+          <input className="pill" placeholder="Search…" value={filters.q} onChange={e=>setFilters(f=>({...f,q:e.target.value}))} />
         </div>
-        <div className="right">
-          <button className="pill export-csv" onClick={onExportCSV}>Export CSV</button>
-          <button className="pill export-pdf" onClick={onExportPDF}>Export PDF</button>
+        <div className="row right">
+          <button className="btn gray" onClick={()=>setFilters({ client:'all', invoice:'', q:'' })}>Reset</button>
+          <button className="btn secondary" onClick={exportCsv}>Export CSV</button>
+          <button className="btn" onClick={exportPdf}>Export PDF</button>
         </div>
       </div>
 
       <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Client</th>
-              <th>Amount</th>
-              <th>Percent</th>
-              <th>Invoice</th>
-              <th>Recorded By</th>
-              <th>Method</th>
-              <th>Note</th>
-            </tr>
-          </thead>
+        <table className="grid">
+          <thead><tr>
+            <th>Date</th><th>Client</th><th>Amount</th><th>Percent</th><th>Invoice</th><th>Recorded By</th><th>Method</th><th>Note</th>
+          </tr></thead>
           <tbody>
-            {items.map(x => (
-              <tr key={x.id}>
-                <td>{x.created_at || '—'}</td>
-                <td><Link to={`/clients/${x.client_id}`}>{x.client_name || '—'}</Link></td>
-                <td><Money value={x.amount || 0} /></td>
-                <td>{x.percent || '—'}</td>
-                <td>{x.invoice_id ? <Link to={`/invoices/${x.invoice_id}`}>#{x.invoice_id}</Link> : '—'}</td>
-                <td>{x.recorded_by || '—'}</td>
-                <td>{x.method || '—'}</td>
-                <td>{x.note || '—'}</td>
+            {filtered.length===0 && (<tr><td colSpan="8" className="muted">No payments found</td></tr>)}
+            {filtered.map(r => (
+              <tr key={r.id}>
+                <td>{r.created_at}</td>
+                <td><Link to={`/clients/${r.client_id}/statement`}>{r.client_name}</Link></td>
+                <td>{formatAmount(r.amount, r.currency)}</td>
+                <td>{r.percent ? r.percent+'%' : '—'}</td>
+                <td><Link to={`/invoices/${r.invoice_id}`}>#{r.invoice_id}</Link></td>
+                <td>{r.recorded_by_name || '—'}</td>
+                <td>{r.method || '—'}</td>
+                <td>{r.note || '—'}</td>
               </tr>
             ))}
-            {items.length===0 && <tr><td colSpan={8} className="muted">No payments found</td></tr>}
           </tbody>
         </table>
       </div>

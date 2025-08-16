@@ -1,194 +1,153 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
-import Money from '../components/Money';
-import { exportCSV, exportPDF } from '../utils/export';
+import { formatAmount } from '../utils/format';
+import { downloadCSV, downloadPDF } from '../utils/export';
+import { Link } from 'react-router-dom';
 
 export default function Invoices(){
-  const [items, setItems] = useState([]);
+  const [rows, setRows] = useState([]);
   const [clients, setClients] = useState([]);
-  const [status, setStatus] = useState('all');
-  const [clientId, setClientId] = useState('all');
-  const [search, setSearch] = useState('');
-  const [overdueOnly, setOverdueOnly] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  // Add‑invoice modal state
+  const [statuses] = useState(['all', 'pending', 'part-paid', 'paid', 'overdue']);
+  const [filters, setFilters] = useState({ status:'all', client:'all', q:'', onlyOverdue:false, created:'' });
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ client_id: '', title: '', description: '', total: '', due_date: '' });
-  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ client_id:'', title:'', description:'', total:'', due_date:'', created_at:'' });
 
   async function load(){
-    setLoading(true);
-    const qs = new URLSearchParams();
-    if (status !== 'all') qs.set('status', status);
-    if (clientId !== 'all') qs.set('client_id', clientId);
-    if (overdueOnly) qs.set('overdue', 'true');
-    if (search) qs.set('q', search);
-    const [invRes, clRes] = await Promise.all([
-      apiFetch('/api/invoices?' + qs.toString()),
-      apiFetch('/api/clients')
-    ]);
-    const inv = invRes.ok ? await invRes.json() : [];
-    const cls = clRes.ok ? await clRes.json() : [];
-    setItems(Array.isArray(inv) ? inv : (inv.items || []));
-    setClients(Array.isArray(cls) ? cls : (cls.items || []));
-    setLoading(false);
+    const rs = await Promise.all([ apiFetch('/api/invoices'), apiFetch('/api/clients') ]);
+    const invs = await rs[0].json();
+    const cls  = await rs[1].json();
+    setRows(invs);
+    setClients(cls);
   }
-  useEffect(()=>{ load(); /* eslint-disable-next-line */ }, []);
+  useEffect(()=>{ load(); },[]);
 
-  function onApply(){ load(); }
-  function onReset(){ setStatus('all'); setClientId('all'); setSearch(''); setOverdueOnly(false); setTimeout(load,0); }
+  const filtered = rows.filter(r => {
+    if (filters.status!=='all' && r.status!==filters.status) return false;
+    if (filters.client!=='all' && String(r.client_id)!==String(filters.client)) return false;
+    if (filters.onlyOverdue && r.status!=='overdue') return false;
+    if (filters.q && !(`${r.title||''} ${r.description||''} ${r.client_name||''}`.toLowerCase().includes(filters.q.toLowerCase()))) return false;
+    return true;
+  });
 
-  function onExportCSV(){
-    const headers = ['#','Client','Title','Total','Paid','Balance','Status','Due','Created','Recorded By'];
-    const rows = items.map((it) => ({
-      '#': it.id,
-      'Client': it.client_name || it.client_id,
-      'Title': it.title || '',
-      'Total': it.total || 0,
-      'Paid': Math.max(0, (it.total || 0) - (it.balance || 0)),
-      'Balance': it.balance || 0,
-      'Status': it.status || '',
-      'Due': it.due_date || '',
-      'Created': it.created_at || '',
-      'Recorded By': it.recorded_by || ''
+  function paidOf(inv){
+    const balance = inv.balance ?? 0;
+    const total = inv.total ?? 0;
+    const paid = total - balance;
+    return paid < 0 ? 0 : paid;
+  }
+
+  function exportCsv(){
+    const data = filtered.map(r => ({
+      id: r.id,
+      client: r.client_name,
+      title: r.title || '',
+      total: r.total,
+      paid: paidOf(r),
+      balance: r.balance,
+      status: r.status,
+      created: r.created_at
     }));
-    exportCSV('invoices.csv', headers, rows);
+    downloadCSV(data, 'invoices.csv');
   }
-  function onExportPDF(){
-    const headers = ['#','Client','Title','Total','Paid','Balance','Status','Due','Created','Recorded By'];
-    const rows = items.map((it) => ({
-      '#': it.id,
-      'Client': it.client_name || it.client_id,
-      'Title': it.title || '',
-      'Total': it.total || 0,
-      'Paid': Math.max(0, (it.total || 0) - (it.balance || 0)),
-      'Balance': it.balance || 0,
-      'Status': it.status || '',
-      'Due': it.due_date || '',
-      'Created': it.created_at || '',
-      'Recorded By': it.recorded_by || ''
-    }));
-    exportPDF('invoices.pdf', headers, rows, { orientation:'landscape', money:['Total','Paid','Balance'] });
+  function exportPdf(){
+    downloadPDF({
+      title: 'Invoices',
+      columns: ['#','Client','Title','Total','Paid','Balance','Status','Due','Created','Recorded By'],
+      rows: filtered.map((r,i) => [
+        i+1, r.client_name, r.title || '', formatAmount(r.total, r.currency),
+        formatAmount(paidOf(r), r.currency), formatAmount(r.balance, r.currency),
+        r.status, r.due_date || '—', r.created_at || '—', r.created_by_name || '—'
+      ])
+    }, 'invoices.pdf', { landscape:true });
   }
 
-  async function saveNewInvoice(e){
+  async function createInvoice(e){
     e.preventDefault();
-    if (!form.client_id || !form.total) return;
-    setSaving(true);
-    const payload = {
-      client_id: form.client_id,
-      title: form.title || '',
-      description: form.description || '',
-      total: Number(form.total),
-      due_date: form.due_date || null
-    };
-    const res = await apiFetch('/api/invoices', { method:'POST', body: JSON.stringify(payload) });
-    setSaving(false);
-    if(res.ok){ setShowAdd(false); setForm({ client_id:'', title:'', description:'', total:'', due_date:'' }); load(); }
-    else { alert('Failed to create invoice'); }
+    const body = { ...form, total: Number(form.total), client_id: Number(form.client_id) };
+    const res = await apiFetch('/api/invoices', { method:'POST', body: JSON.stringify(body) });
+    if(res.ok){ setShowAdd(false); setForm({ client_id:'', title:'', description:'', total:'', due_date:'', created_at:'' }); load(); }
+    else alert('Failed');
   }
 
   return (
-    <div className="page">
+    <div>
       <h1>Invoices</h1>
 
-      {/* Filters row (left cluster & right cluster) */}
-      <div className="filters card" style={{marginBottom:14}}>
-        <div className="left">
-          <select value={status} onChange={e=>setStatus(e.target.value)}>
+      {/* Filter bar */}
+      <div className="toolbar">
+        <div className="row left">
+          <select className="pill" value={filters.status} onChange={e=>setFilters(f=>({...f,status:e.target.value}))}>
             <option value="all">All statuses</option>
-            <option value="pending">Pending</option>
-            <option value="part-paid">Part paid</option>
-            <option value="paid">Paid</option>
+            {statuses.slice(1).map(s => <option key={s} value={s}>{s}</option>)}
           </select>
-          <select value={clientId} onChange={e=>setClientId(e.target.value)}>
+          <select className="pill" value={filters.client} onChange={e=>setFilters(f=>({...f,client:e.target.value}))}>
             <option value="all">All clients</option>
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)} />
-          <label style={{display:'inline-flex', alignItems:'center', gap:8}}>
-            <input type="checkbox" checked={overdueOnly} onChange={e=>setOverdueOnly(e.target.checked)} />
-            Overdue
+          <input className="pill" placeholder="Search…" value={filters.q} onChange={e=>setFilters(f=>({...f,q:e.target.value}))} />
+          <label className="checkbox pill">
+            <input type="checkbox" checked={filters.onlyOverdue} onChange={e=>setFilters(f=>({...f,onlyOverdue:e.target.checked}))} />
+            <span>Overdue</span>
           </label>
-          <button className="pill btn" onClick={onApply}>Apply</button>
-          <button className="pill secondary" onClick={onReset}>Reset</button>
-          <button className="pill danger" onClick={()=>setShowAdd(true)}>Add Invoice</button>
+          <input className="pill" type="date" value={filters.created} onChange={e=>setFilters(f=>({...f,created:e.target.value}))} />
         </div>
-        <div className="right">
-          <button className="pill export-csv" onClick={onExportCSV}>Export CSV</button>
-          <button className="pill export-pdf" onClick={onExportPDF}>Export PDF</button>
+        <div className="row right">
+          <button className="btn gray" onClick={()=>setFilters({ status:'all', client:'all', q:'', onlyOverdue:false, created:'' })}>Reset</button>
+          <button className="btn secondary" onClick={exportCsv}>Export CSV</button>
+          <button className="btn" onClick={exportPdf}>Export PDF</button>
         </div>
       </div>
 
+      {/* Secondary actions bar */}
+      <div className="toolbar under">
+        <button className="btn" onClick={()=>setShowAdd(true)}>Add Invoice</button>
+      </div>
+
+      {/* Table */}
       <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Client</th>
-              <th>Title</th>
-              <th>Total</th>
-              <th>Paid</th>
-              <th>Balance</th>
-              <th>Status</th>
-              <th>Due</th>
-              <th>Created</th>
-              <th>Recorded By</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
+        <table className="grid">
+          <thead><tr>
+            <th>#</th><th>Client</th><th>Title</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Due</th><th>Created</th><th>Recorded By</th><th>Actions</th>
+          </tr></thead>
           <tbody>
-            {items.map(it => {
-              const paid = Math.max(0, (it.total || 0) - (it.balance || 0));
-              return (
-                <tr key={it.id}>
-                  <td>{it.id}</td>
-                  <td><Link to={`/clients/${it.client_id}`}>{it.client_name || it.client_id}</Link></td>
-                  <td>{it.title || '—'}</td>
-                  <td><Money value={it.total || 0} /></td>
-                  <td><Money value={paid} /></td>
-                  <td><Money value={it.balance || 0} /></td>
-                  <td><span className="pill border">{it.status || '—'}</span></td>
-                  <td>{it.due_date || '—'}</td>
-                  <td>{it.created_at || '—'}</td>
-                  <td>{it.recorded_by || '—'}</td>
-                  <td><Link to={`/invoices/${it.id}`}>View</Link></td>
-                </tr>
-              );
-            })}
-            {items.length===0 && <tr><td colSpan={11} className="muted">No invoices found</td></tr>}
+            {filtered.length===0 && (<tr><td colSpan="11" className="muted">No invoices found</td></tr>)}
+            {filtered.map((r,i)=>(
+              <tr key={r.id}>
+                <td>{i+1}</td>
+                <td><Link to={`/clients/${r.client_id}/statement`}>{r.client_name}</Link></td>
+                <td>{r.title || '—'}</td>
+                <td>{formatAmount(r.total, r.currency)}</td>
+                <td>{formatAmount(paidOf(r), r.currency)}</td>
+                <td>{formatAmount(r.balance, r.currency)}</td>
+                <td><span className={`badge ${r.status}`}>{r.status}</span></td>
+                <td>{r.due_date || '—'}</td>
+                <td>{r.created_at || '—'}</td>
+                <td>{r.recorded_by_name || '—'}</td>
+                <td><Link to={`/invoices/${r.id}`}>View</Link></td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
 
-      {/* Add Invoice Modal (UI only, uses existing POST /api/invoices) */}
+      {/* Add modal */}
       {showAdd && (
-        <div className="modal-backdrop" onClick={()=>setShowAdd(false)}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="hd">Add invoice</div>
-            <form onSubmit={saveNewInvoice}>
-              <div className="bd">
-                <div className="row">
-                  <select value={form.client_id} onChange={e=>setForm(f=>({ ...f, client_id:e.target.value }))} required>
-                    <option value="">Select client</option>
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  <input placeholder="Title (optional)" value={form.title} onChange={e=>setForm(f=>({ ...f, title:e.target.value }))} />
-                </div>
-                <textarea placeholder="Description (optional)" rows={3} value={form.description} onChange={e=>setForm(f=>({ ...f, description:e.target.value }))} />
-                <div className="row">
-                  <input type="number" step="0.01" placeholder="Total amount" value={form.total} onChange={e=>setForm(f=>({ ...f, total:e.target.value }))} required />
-                  <input type="date" placeholder="Due date (optional)" value={form.due_date} onChange={e=>setForm(f=>({ ...f, due_date:e.target.value }))} />
-                </div>
-              </div>
-              <div className="ft">
-                <button type="button" className="pill btn" onClick={()=>setShowAdd(false)}>Cancel</button>
-                <button type="submit" disabled={saving} className="pill danger">{saving ? 'Saving…' : 'Save'}</button>
-              </div>
-            </form>
-          </div>
+        <div className="modal">
+          <form className="panel" onSubmit={createInvoice}>
+            <h3>Add invoice</h3>
+            <select className="pill" required value={form.client_id} onChange={e=>setForm(f=>({...f,client_id:e.target.value}))}>
+              <option value="">Select client</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <input className="pill" placeholder="Title (optional)" value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}/>
+            <textarea className="pill" placeholder="Description (optional)" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))}/>
+            <input className="pill" placeholder="Total amount" inputMode="decimal" value={form.total} onChange={e=>setForm(f=>({...f,total:e.target.value}))}/>
+            <input className="pill" type="date" value={form.due_date} onChange={e=>setForm(f=>({...f,due_date:e.target.value}))} />
+            <div className="row right" style={{gap:8}}>
+              <button type="button" className="btn gray" onClick={()=>setShowAdd(false)}>Cancel</button>
+              <button className="btn" type="submit">Save</button>
+            </div>
+          </form>
         </div>
       )}
     </div>
