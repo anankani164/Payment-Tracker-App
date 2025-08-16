@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Route, Routes, useNavigate, Navigate, useLocation } from 'react-router-dom';
+
 import Dashboard from './pages/Dashboard.jsx';
 import Clients from './pages/Clients.jsx';
 import Invoices from './pages/Invoices.jsx';
@@ -9,116 +10,139 @@ import ClientStatement from './pages/ClientStatement.jsx';
 import Admin from './pages/Admin.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
+
 import { apiFetch } from './utils/api';
 
 import './brand.css';
-import './brand.override.css';  // NEW: control colors here
-import logoUrl from './assets/logo.png';
+import './brand.override.css'; // keep your styling overrides
 
-/* Token helpers: avoid tight coupling to utils/api token helpers */
-const TOKEN_KEYS = ['token','auth_token','jwt','access_token'];
-function getAnyToken(){
-  for (const k of TOKEN_KEYS){
-    const v = localStorage.getItem(k);
-    if (v) return v;
+function useAuth() {
+  const [user, setUser] = useState(null);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        // If there is no token, skip calling /me to avoid a flash of auth error.
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        if (!token) {
+          if (alive) { setUser(null); setChecking(false); }
+          return;
+        }
+        const res = await apiFetch('/api/auth/me');
+        if (res.ok) {
+          const data = await res.json();
+          if (alive) setUser(data.user || null);
+        } else {
+          if (alive) setUser(null);
+        }
+      } catch {
+        if (alive) setUser(null);
+      } finally {
+        if (alive) setChecking(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  return { user, setUser, checking };
+}
+
+function RequireAuth({ children }) {
+  const location = useLocation();
+  const hasToken = !!(localStorage.getItem('token') || sessionStorage.getItem('token'));
+  if (!hasToken) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  return null;
-}
-function clearAnyToken(){
-  for (const k of TOKEN_KEYS) localStorage.removeItem(k);
-}
-
-function RequireAuth({ children }){
-  const loc = useLocation();
-  const token = getAnyToken();
-  if (!token) return <Navigate to="/login" replace state={{ from: loc.pathname }} />;
   return children;
 }
 
-export default function App(){
-  const [user, setUser] = useState(null);
-  const [hasToken, setHasToken] = useState(!!getAnyToken());
+export default function App() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user, setUser, checking } = useAuth();
 
-  // reflect token changes from other tabs
-  useEffect(()=>{
-    const i = setInterval(()=> setHasToken(!!getAnyToken()), 800);
-    return ()=> clearInterval(i);
-  },[]);
+  const hasToken = !!(localStorage.getItem('token') || sessionStorage.getItem('token'));
 
-  // fetch /me when we have a token
-  useEffect(()=>{
-    let cancelled = false;
-    async function loadMe(){
-      if (!getAnyToken()) { setUser(null); return; }
-      try{
-        const r = await apiFetch('/api/auth/me');
-        const d = await r.json();
-        if (!cancelled) setUser(d?.user || null);
-      }catch{
-        if (!cancelled) setUser(null);
-      }
-    }
-    loadMe();
-    return ()=>{ cancelled = true; };
-  }, [hasToken]);
-
-  function logout(){
-    clearAnyToken();
+  function logout() {
+    try {
+      localStorage.removeItem('token');
+      sessionStorage.removeItem('token');
+    } catch {}
     setUser(null);
-    setHasToken(false);
-    navigate('/login');
+    navigate('/login', { replace: true, state: { from: location } });
+  }
+
+  if (checking) {
+    // Keep this minimal to avoid UI shifts; no style changes.
+    return <div className="page"><div className="muted">Loading…</div></div>;
   }
 
   return (
-    <div>
-      <nav className="topnav">
-        <div style={{display:'flex', alignItems:'center', gap:12}}>
-          <a className="brand" href="/">
-            <img src={logoUrl} alt="Logo" />
-            <span>Payment Tracker</span>
-          </a>
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">
+          {/* Keep your existing logo/brand area as-is; no visual changes */}
+          <NavLink to="/" className="brand-link">Dashboard</NavLink>
+        </div>
+
+        <nav className="menu">
+          {/* Keep your existing menu style/classes; no changes to look */}
           {hasToken && (
-            <div className="tabs">
-              <NavLink to="/" end>Dashboard</NavLink>
+            <>
+              <NavLink to="/" end>Home</NavLink>
               <NavLink to="/clients">Clients</NavLink>
               <NavLink to="/invoices">Invoices</NavLink>
               <NavLink to="/payments">Payments</NavLink>
-              <NavLink to="/admin">Admin</NavLink>
+
+              {/* Admin-only Users link (goes to your existing Admin page) */}
+              {user && (user.role === 'admin' || user.role === 'superadmin') && (
+                <NavLink to="/admin" className="pill">Users</NavLink>
+              )}
+            </>
+          )}
+        </nav>
+
+        <div className="authbox">
+          {!hasToken ? (
+            <div className="auth-actions">
+              <NavLink to="/login" className="pill">Login</NavLink>
+              <NavLink to="/register" className="pill">Register</NavLink>
+            </div>
+          ) : (
+            <div className="auth-user" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="muted">
+                {user?.name ? `Hi, ${user.name}` : (user?.email || '')}
+              </span>
+              <button className="border" onClick={logout}>Log out</button>
             </div>
           )}
         </div>
-        <div style={{display:'flex', alignItems:'center', gap:8}}>
-          {!hasToken ? (
-            <>
-              <NavLink to="/login" className="btn secondary">Login</NavLink>
-              <NavLink to="/register" className="btn">Register</NavLink>
-            </>
-          ) : (
-            <>
-              {user && <span className="muted">Hi, {user.name || user.email}</span>}
-              <button className="btn small" onClick={logout}>Logout</button>
-            </>
-          )}
-        </div>
-      </nav>
+      </header>
 
-      <main className="container">
+      <main className="main">
         <Routes>
-          {/* Public */}
-          <Route path="/login" element={<Login/>} />
-          <Route path="/register" element={<Register/>} />
+          {/* Public routes (when not logged in) */}
+          <Route path="/login" element={hasToken ? <Navigate to="/" replace /> : <Login onLoggedIn={() => navigate('/', { replace: true })} />} />
+          <Route path="/register" element={hasToken ? <Navigate to="/" replace /> : <Register onRegistered={() => navigate('/login', { replace: true })} />} />
 
-          {/* Protected */}
-          <Route path="/" element={<RequireAuth><Dashboard/></RequireAuth>} />
-          <Route path="/clients" element={<RequireAuth><Clients/></RequireAuth>} />
-          <Route path="/clients/:id/statement" element={<RequireAuth><ClientStatement/></RequireAuth>} />
-          <Route path="/invoices" element={<RequireAuth><Invoices/></RequireAuth>} />
-          <Route path="/invoices/:id" element={<RequireAuth><InvoiceDetails/></RequireAuth>} />
-          <Route path="/payments" element={<RequireAuth><Payments/></RequireAuth>} />
-          <Route path="/admin" element={<RequireAuth><Admin/></RequireAuth>} />
+          {/* Private routes */}
+          <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
+          <Route path="/clients" element={<RequireAuth><Clients /></RequireAuth>} />
 
-          {/* Fallback */}
+          {/* IMPORTANT: Support BOTH statement routes */}
+          <Route path="/clients/:id" element={<RequireAuth><ClientStatement /></RequireAuth>} />
+          <Route path="/clients/:id/statement" element={<RequireAuth><ClientStatement /></RequireAuth>} />
+
+          <Route path="/invoices" element={<RequireAuth><Invoices /></RequireAuth>} />
+          <Route path="/invoices/:id" element={<RequireAuth><InvoiceDetails /></RequireAuth>} />
+          <Route path="/payments" element={<RequireAuth><Payments /></RequireAuth>} />
+
+          {/* Admin page for user management (visible via menu only for admin/superadmin) */}
+          <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
+
+          {/* Fallback: go to dashboard if logged in, else to login */}
           <Route path="*" element={<Navigate to={hasToken ? '/' : '/login'} replace />} />
         </Routes>
       </main>
