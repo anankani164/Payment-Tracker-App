@@ -1,0 +1,28 @@
+/* UI overrides for Clients page */
+/* Heuristic styles: target prominent red primary buttons to avoid full-width stretch */
+button, .btn, [role="button"] {
+  /* no global change */
+}
+
+/* If your primary button uses this red, cap its width and center it */
+button.bg-red-600, .btn.bg-red-600 {
+  max-width: 18rem;           /* ≈ 288px */
+  width: auto;                /* prevents full-width */
+}
+
+/* helper: allow containers to center the button */
+.add-client-center,
+[data-add-client="true"] {
+  display: flex;
+  justify-content: center;
+}
+
+/* If the button itself has the data attribute, make it pill and center via margin */
+button[data-add-client="true"] {
+  max-width: 18rem;
+  width: auto !important;
+  margin: 0 auto;
+  border-radius: 9999px;
+  padding-left: 1.25rem;  /* px-5 */
+  padding-right: 1.25rem;
+}
