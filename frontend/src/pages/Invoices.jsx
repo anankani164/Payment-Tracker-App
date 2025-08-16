@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
 import Money from '../components/Money';
@@ -6,7 +6,9 @@ import { exportCSV, exportPDF } from '../utils/export';
 
 export default function Invoices(){
   const [items, setItems] = useState([]);
-  const [clients, setClients] = useState([]);
+  
+const [payingId, setPayingId] = useState(null);
+const [clients, setClients] = useState([]);
   const [status, setStatus] = useState('all');
   const [clientId, setClientId] = useState('all');
   const [search, setSearch] = useState('');
@@ -89,6 +91,49 @@ export default function Invoices(){
     if(res.ok){ setShowAdd(false); setForm({ client_id:'', title:'', description:'', total:'', due_date:'' }); load(); }
     else { alert('Failed to create invoice'); }
   }
+// Records a payment equal to the current balance, then refreshes.
+const payInFull = useCallback(async (inv) => {
+  if (!inv) return;
+  const paid   = Number(inv.paid ?? inv.amount_paid ?? inv.amount_paid_in_inv ?? 0);
+  const total  = Number(inv.total ?? 0);
+  const balance = Number(inv.balance ?? (total - paid));
+  const currency = inv.currency || inv.currency_code || 'GHS';
+  if (balance <= 0) return;
+  if (!window.confirm(`Record full payment of ${currency} ${balance.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} for invoice #${inv.id}?`)) return;
+  try {
+    setPayingId(inv.id);
+    const res = await apiFetch('/api/payments', {
+      method: 'POST',
+      body: JSON.stringify({
+        invoice_id: inv.id,
+        amount: balance,
+        method: 'Paid in Full',
+        note: 'One-click full payment'
+      })
+    });
+    if (!res.ok) {
+      const msg = await res.text().catch(() => 'Failed to record payment');
+      alert(msg);
+      return;
+    }
+    if (typeof load === 'function') {
+      await load();
+    } else {
+      setInvoices(prev => prev.map(row =>
+        row.id === inv.id
+          ? { ...row,
+              paid: (Number(row.paid ?? row.amount_paid ?? row.amount_paid_in_inv ?? 0) + balance),
+              balance: 0,
+              status: 'paid' }
+          : row
+      ));
+    }
+  } finally {
+    setPayingId(null);
+  }
+}, []);
+
+
 
   return (
     <div className="page">
