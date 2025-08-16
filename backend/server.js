@@ -1,6 +1,7 @@
 // backend/server.js
 // Adds: Super Admin user management + Multicurrency support
 // Keeps: Existing endpoints (clients, invoices, payments, statement)
+// + Back-compat aliases so older UI fields render: paid, recorded_by, created
 
 import express from 'express';
 import cors from 'cors';
@@ -358,7 +359,11 @@ app.get('/api/invoices', auth, (req,res)=>{
       overdue,
       total_base, amount_paid_base: paid_base, balance_base,
       client: r.client_id ? { id:r.client_id, name:r.client_name, email:r.client_email } : null,
-      created_by_user: r.created_by_id ? { id:r.created_by_id, name:r.created_by_name, email:r.created_by_email } : null
+      created_by_user: r.created_by_id ? { id:r.created_by_id, name:r.created_by_name, email:r.created_by_email } : null,
+      // ---- Back-compat aliases for existing UI columns
+      paid: amount_paid,                         // UI "Paid"
+      recorded_by: r.created_by_name || '',      // UI "Recorded By"
+      created: r.created_at                      // UI "Created"
     };
   });
   res.json(rows);
@@ -390,7 +395,9 @@ app.get('/api/invoices/:id', auth, (req,res)=>{
     ORDER BY p.id DESC
   `, [id]).map(p => ({
     ...p,
-    recorded_by_user: p.created_by_id ? { id:p.created_by_id, name:p.created_by_name, email:p.created_by_email } : null
+    recorded_by_user: p.created_by_id ? { id:p.created_by_id, name:p.created_by_name, email:p.created_by_email } : null,
+    // Back-compat alias
+    recorded_by: p.created_by_name || ''
   }));
 
   const total_base = Number(inv.total||0) * coalesceRate(inv.rate_to_base);
@@ -406,6 +413,8 @@ app.get('/api/invoices/:id', auth, (req,res)=>{
     total_base, amount_paid_base, balance_base,
     client: inv.client_id ? { id:inv.client_id, name:inv.client_name, email:inv.client_email } : null,
     created_by_user: inv.created_by_id ? { id:inv.created_by_id, name:inv.created_by_name, email:inv.created_by_email } : null,
+    // Back-compat alias for header area
+    recorded_by: inv.created_by_name || '',
     payments: pays
   });
 });
@@ -480,7 +489,9 @@ app.get('/api/payments', auth, (req,res)=>{
     ...r,
     amount_base: Number(r.amount||0) * coalesceRate(r.rate_to_base || r.invoice_rate_to_base),
     recorded_by_user: r.created_by_id ? { id:r.created_by_id, name:r.created_by_name, email:r.created_by_email } : null,
-    client: r.client_id ? { id:r.client_id, name:r.client_name, email:r.client_email } : null
+    client: r.client_id ? { id:r.client_id, name:r.client_name, email:r.client_email } : null,
+    // Back-compat alias for UI table
+    recorded_by: r.created_by_name || ''
   }));
   res.json(rows);
 });
