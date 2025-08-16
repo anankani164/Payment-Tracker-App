@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
 import Money from '../components/Money';
@@ -13,10 +13,11 @@ export default function Invoices(){
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Add‑invoice modal state
+  // Add-invoice modal state
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ client_id: '', title: '', description: '', total: '', due_date: '' });
   const [saving, setSaving] = useState(false);
+  const [markingId, setMarkingId] = useState(null);
 
   async function load(){
     setLoading(true);
@@ -25,16 +26,36 @@ export default function Invoices(){
     if (clientId !== 'all') qs.set('client_id', clientId);
     if (overdueOnly) qs.set('overdue', 'true');
     if (search) qs.set('q', search);
+
     const [invRes, clRes] = await Promise.all([
       apiFetch('/api/invoices?' + qs.toString()),
       apiFetch('/api/clients')
     ]);
+
     const inv = invRes.ok ? await invRes.json() : [];
     const cls = clRes.ok ? await clRes.json() : [];
     setItems(Array.isArray(inv) ? inv : (inv.items || []));
     setClients(Array.isArray(cls) ? cls : (cls.items || []));
     setLoading(false);
   }
+
+  // ✅ move markPaid OUTSIDE of load(), at top level
+  const markPaid = useCallback(async (id) => {
+    if (!id) return;
+    try {
+      setMarkingId(id);
+      const res = await apiFetch(`/api/invoices/${id}/mark-paid`, { method: 'POST' });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => 'Failed to mark as paid');
+        alert(msg);
+        return;
+      }
+      if (typeof load === 'function') await load(); // refresh from server
+    } finally {
+      setMarkingId(null);
+    }
+  }, []);
+
   useEffect(()=>{ load(); /* eslint-disable-next-line */ }, []);
 
   function onApply(){ load(); }
@@ -56,6 +77,7 @@ export default function Invoices(){
     }));
     exportCSV('invoices.csv', headers, rows);
   }
+
   function onExportPDF(){
     const headers = ['#','Client','Title','Total','Paid','Balance','Status','Due','Created','Recorded By'];
     const rows = items.map((it) => ({
@@ -154,7 +176,19 @@ export default function Invoices(){
                   <td>{it.due_date || '—'}</td>
                   <td>{it.created_at || '—'}</td>
                   <td>{it.recorded_by || '—'}</td>
-                  <td><Link to={`/invoices/${it.id}`}>View</Link></td>
+                  <td>
+                    <Link to={`/invoices/${it.id}`}>View</Link>{' '}
+                    {it.status !== 'paid' && (
+                      <button
+                        className="btn btn-ghost pill"
+                        disabled={markingId === it.id}
+                        onClick={() => markPaid(it.id)}
+                        title="Set invoice status to paid"
+                      >
+                        {markingId === it.id ? 'Saving…' : 'Mark as paid'}
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}
