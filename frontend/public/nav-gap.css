@@ -1,0 +1,29 @@
+/* navbar spacing override (safe, drop-in). 
+   Adjust numbers as needed. */
+:root { --nav-gap-sm: 0.5rem; --nav-gap-md: 1rem; --nav-gap-lg: 1.5rem; }
+
+/* Add left margin to all nav items except Dashboard */
+a[href="/clients"],
+a[href="/invoices"],
+a[href="/payments"],
+a[href="/admin"] {
+  margin-left: var(--nav-gap-sm) !important;
+}
+
+@media (min-width: 640px) {
+  a[href="/clients"],
+  a[href="/invoices"],
+  a[href="/payments"],
+  a[href="/admin"] {
+    margin-left: var(--nav-gap-md) !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  a[href="/clients"],
+  a[href="/invoices"],
+  a[href="/payments"],
+  a[href="/admin"] {
+    margin-left: var(--nav-gap-lg) !important;
+  }
+}
