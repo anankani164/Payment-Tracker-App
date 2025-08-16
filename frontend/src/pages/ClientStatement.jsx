@@ -15,12 +15,12 @@ export default function ClientStatement(){
     (async () => {
       try{
         const r = await apiFetch(`/api/clients/${id}/statement`);
-        if (!r.ok) {
+        if (!r.ok){
           const d = await r.json().catch(()=>({}));
           throw new Error(d.error || 'Failed to load');
         }
-        const json = await r.json();
-        if (alive) setData(json);
+        const j = await r.json();
+        if (alive) setData(j);
       }catch(e){
         if (alive) setError(e.message || 'Error');
       }finally{
@@ -34,10 +34,10 @@ export default function ClientStatement(){
   if (error) return <div className="page"><div className="error">{error}</div></div>;
   if (!data) return <div className="page"><div className="muted">No data</div></div>;
 
-  const { client, entries } = data;
+  const { client, totals, entries } = data;
 
-  function doExportCSV(){
-    const headers = ['Date','Type','Ref','Description','Invoice','Amount','Running'];
+  function onExportCSV(){
+    const headers = ['Date','Type','Ref','Description','Invoice','Amount','Running Balance'];
     const rows = entries.map(e => ({
       'Date': e.date || '',
       'Type': e.type,
@@ -45,12 +45,13 @@ export default function ClientStatement(){
       'Description': e.description || '',
       'Invoice': e.invoice_id || '',
       'Amount': e.amount,
-      'Running': e.running
+      'Running Balance': e.running
     }));
-    exportCSV(`client-${client?.id || 'statement'}.csv`, headers, rows);
+    exportCSV(`client-${client?.name || client?.id}-statement.csv`, headers, rows);
   }
-  function doExportPDF(){
-    const headers = ['Date','Type','Ref','Description','Invoice','Amount','Running'];
+
+  function onExportPDF(){
+    const headers = ['Date','Type','Ref','Description','Invoice','Amount','Running Balance'];
     const rows = entries.map(e => ({
       'Date': e.date || '',
       'Type': e.type,
@@ -58,56 +59,74 @@ export default function ClientStatement(){
       'Description': e.description || '',
       'Invoice': e.invoice_id || '',
       'Amount': e.amount,
-      'Running': e.running
+      'Running Balance': e.running
     }));
-    exportPDF(`client-${client?.id || 'statement'}.pdf`, headers, rows, { title: `Client ${client?.name || client?.id} Statement`, money:['Amount','Running'], orientation:'landscape' });
+    exportPDF(`client-${client?.name || client?.id}-statement.pdf`, headers, rows, {
+      title: `Client Statement — ${client?.name || client?.id}`,
+      orientation: 'landscape',
+      money: ['Amount','Running Balance']
+    });
   }
 
   return (
     <div className="page">
-      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-        <h1 style={{margin:0}}>Client • {client?.name || `#${client?.id}`}</h1>
-        <div style={{display:'flex', gap:8, alignItems:'center'}}>
-          <Link to="/clients" className="border">Back to clients</Link>
-          <button className="border" onClick={doExportCSV}>Export CSV</button>
-          <button className="btn" onClick={doExportPDF}>Export PDF</button>
+      <h1>Client Statement — {client?.name || `#${client?.id}`}</h1>
+
+      {/* metrics row – matches your screenshot's pill cards */}
+      <div className="cards3">
+        <div className="card metric">
+          <div className="muted">Total Invoiced</div>
+          <div className="kpi"><Money value={totals?.total_invoiced || 0} /></div>
+        </div>
+        <div className="card metric">
+          <div className="muted">Total Paid</div>
+          <div className="kpi"><Money value={totals?.total_paid || 0} /></div>
+        </div>
+        <div className="card metric">
+          <div className="muted">Balance</div>
+          <div className="kpi"><Money value={totals?.balance_base || 0} /></div>
+        </div>
+        <div className="card metric right-actions">
+          <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+            <button className="border" onClick={onExportCSV}>Export CSV</button>
+            <button className="btn" onClick={onExportPDF}>Export PDF</button>
+          </div>
         </div>
       </div>
 
       <div className="card" style={{marginTop:12}}>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:12}}>
-          <div><div className="muted">Email</div><div>{client?.email || '—'}</div></div>
-          <div><div className="muted">Phone</div><div>{client?.phone || '—'}</div></div>
-        </div>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Type</th>
+              <th>Ref</th>
+              <th>Description</th>
+              <th>Invoice</th>
+              <th>Amount</th>
+              <th>Running Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((e, idx) => (
+              <tr key={idx}>
+                <td>{e.date || ''}</td>
+                <td>{e.type}</td>
+                <td>{e.ref}</td>
+                <td>{e.description || ''}</td>
+                <td>{e.invoice_id ? <Link to={`/invoices/${e.invoice_id}`}>#{e.invoice_id}</Link> : '—'}</td>
+                <td><Money value={e.amount} /></td>
+                <td><Money value={e.running} /></td>
+              </tr>
+            ))}
+            {entries.length===0 && <tr><td colSpan={7} className="muted">No entries</td></tr>}
+          </tbody>
+        </table>
       </div>
 
-      <table className="table" style={{marginTop:16}}>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Type</th>
-            <th>Ref</th>
-            <th>Description</th>
-            <th>Invoice</th>
-            <th>Amount</th>
-            <th>Running</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((e, idx)=> (
-            <tr key={idx}>
-              <td>{e.date || ''}</td>
-              <td>{e.type}</td>
-              <td>{e.ref}</td>
-              <td>{e.description || ''}</td>
-              <td>{e.invoice_id ? <Link to={`/invoices/${e.invoice_id}`}>#{e.invoice_id}</Link> : '—'}</td>
-              <td><Money value={e.amount} /></td>
-              <td><Money value={e.running} /></td>
-            </tr>
-          ))}
-          {entries.length===0 && <tr><td colSpan={7} className="muted">No entries</td></tr>}
-        </tbody>
-      </table>
+      <div style={{marginTop:12}}>
+        <Link to="/clients" className="pill border">Back to Clients</Link>
+      </div>
     </div>
   );
 }
