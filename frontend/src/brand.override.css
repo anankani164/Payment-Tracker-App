@@ -1,152 +1,80 @@
-/* === UI Override: match your screenshots exactly (red pills, soft grey, clean cards) === */
-/* These styles only layer on top of your existing CSS and components. */
-
+/* === UI Override: keep your old look, refine filter layout, and show logo in top-left === */
 :root{
-  --brand-primary: #C2362D;        /* deep NEIL red */
-  --brand-primary-600: #a62f27;
-  --brand-primary-200: #f2d4d2;
-  --brand-accent: #6E6E6E;         /* for secondary/grey pills */
-  --brand-bg: #F6F8FC;             /* page background tint */
-  --brand-card: #ffffff;
-  --brand-border: #E6E8EF;
-  --brand-text: #12151A;
-  --brand-muted: #6F7787;
-  --ring: 0 0 0 4px rgba(194,54,45,0.18);
+  --brand-primary:#C2362D;
+  --brand-primary-600:#A62F27;
+  --brand-primary-200:#F2D4D2;
+  --brand-accent:#6E6E6E;
+  --brand-bg:#F6F8FC;
+  --brand-card:#FFFFFF;
+  --brand-border:#E6E8EF;
+  --brand-text:#12151A;
+  --brand-muted:#6F7787;
+  --ring:0 0 0 4px rgba(194,54,45,.18);
 }
 
-html, body, #root { background: var(--brand-bg); color: var(--brand-text); }
-a { color: #2A58FF; text-decoration: none; }
-a:hover { text-decoration: underline; }
+html,body,#root{ background:var(--brand-bg); color:var(--brand-text); }
+a{ color:#2A58FF; text-decoration:none; } a:hover{ text-decoration:underline; }
 
-/* ==== Topbar (logo + nav pills + logout) ==== */
 .topbar{
-  position: sticky; top: 0; z-index: 40;
+  position:sticky; top:0; z-index:40;
   display:flex; align-items:center; justify-content:space-between;
-  padding: 14px 20px;
-  background: #fff;
-  border-bottom: 1px solid var(--brand-border);
+  padding:14px 20px; background:#fff; border-bottom:1px solid var(--brand-border);
 }
 .brand{ display:flex; align-items:center; gap:10px; font-weight:700; }
 .brand-logo{
-  width:42px; height:22px; display:inline-block;
-  background-size:contain; background-position:left center; background-repeat:no-repeat;
-  /* if you have your logo asset at /neil-logo.png uncomment the next line */
-  /* background-image: url('/neil-logo.png'); */
-  border-radius:4px;
+  width:64px; height:28px; display:inline-block;
+  background-image:url('/neil-logo.png'); /* Put your logo at frontend/public/neil-logo.png */
+  background-size:contain; background-repeat:no-repeat; background-position:left center;
 }
-.brand-text{ font-weight:700; }
+.brand-text{ font-weight:800; }
 
-.menu{ display:flex; align-items:center; gap:12px; }
+.menu{ display:flex; gap:12px; }
 .auth-actions{ display:flex; gap:10px; }
 
-/* ==== Pill buttons (nav + actions) ==== */
-.pill{
-  display:inline-flex; align-items:center; justify-content:center;
-  height:36px; padding: 0 16px;
-  border-radius:9999px;
-  border:1px solid var(--brand-border);
-  background:#F0F3FA;
-  color:#304562;
-  font-weight:600;
-  box-shadow: none;
-  transition: all .15s ease;
-}
-.pill:hover{ filter: brightness(0.97); }
-.pill.active{ box-shadow: var(--ring); }
+.pill{ display:inline-flex; align-items:center; justify-content:center; height:36px; padding:0 16px;
+  border-radius:9999px; border:1px solid var(--brand-border); background:#F0F3FA; color:#304562; font-weight:700; transition:all .15s; }
+.pill:hover{ filter:brightness(.97); } .pill.active{ box-shadow:var(--ring); }
+.pill.btn{ background:#fff; border:1px solid #C9D0E0; } .pill.btn.active{ background:var(--brand-primary-200); border-color:var(--brand-primary-200); }
+.pill.border{ background:#F2F4F9; border:1px solid var(--brand-border); color:#2b3b52; }
+.pill.danger{ background:var(--brand-primary); color:#fff; border:1px solid var(--brand-primary); } .pill.danger:hover{ background:var(--brand-primary-600); }
+.pill.secondary{ background:#B7BBC3; color:#fff; border:1px solid #B7BBC3; }
 
-.pill.btn{
-  background: #fff;
-  border:1px solid #C9D0E0;
-}
-.pill.btn.active{
-  background: var(--brand-primary-200);
-  border-color: var(--brand-primary-200);
-}
+.page{ padding:18px 20px; }
+.card{ background:var(--brand-card); border:1px solid var(--brand-border); border-radius:14px; padding:14px; box-shadow:0 4px 18px rgba(20,35,80,.04); }
+.kpi{ font-size:20px; font-weight:800; margin-top:4px; }
+.muted{ color:var(--brand-muted); }
 
-.pill.border{
-  background:#F2F4F9;
-  border:1px solid var(--brand-border);
-  color:#2b3b52;
-}
-
-.pill.danger{
-  background: var(--brand-primary);
-  color:#fff;
-  border:1px solid var(--brand-primary);
-}
-.pill.danger:hover{ background: var(--brand-primary-600); }
-
-/* small grey secondary (e.g., Reset, Back buttons) */
-.pill.secondary{
-  background:#B7BBC3;
-  color:#fff;
-  border:1px solid #B7BBC3;
-}
-
-/* ==== Cards, metrics and tables ==== */
-.page{ padding: 18px 20px; }
-h1.page-title, .page h1{ margin: 0 0 14px; }
-
-.card{
-  background: var(--brand-card);
-  border:1px solid var(--brand-border);
-  border-radius: 14px;
-  padding: 14px;
-  box-shadow: 0 4px 18px rgba(20,35,80,0.04);
-}
-
-.cards3{
-  display:grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap:12px;
-}
-.cards3 .card.metric{ grid-column: span 3; }
-.cards3 .card.right-actions{
-  grid-column: span 3;
-  display:flex; align-items:center; justify-content:flex-end;
-}
-
-.kpi{ font-size: 20px; font-weight: 800; margin-top: 4px; }
-.muted{ color: var(--brand-muted); }
-
-.table{ width:100%; border-collapse: collapse; }
-.table th, .table td{ text-align:left; padding: 12px 10px; border-bottom:1px solid var(--brand-border); }
-.table thead th{ font-size: 12.5px; color: var(--brand-muted); font-weight:700; background:#FBFCFE; }
+.table{ width:100%; border-collapse:collapse; }
+.table th,.table td{ padding:12px 10px; border-bottom:1px solid var(--brand-border); text-align:left; }
+.table thead th{ font-size:12.5px; color:var(--brand-muted); font-weight:700; background:#FBFCFE; }
 .table tbody tr:hover{ background:#FAFBFF; }
 
-/* ==== Forms & inputs ==== */
-input, select, textarea{
-  border-radius: 10px;
-  border:1px solid var(--brand-border);
-  padding:10px 12px;
-  outline: none;
+/* Inputs & buttons */
+input,select,textarea{ border-radius:10px; border:1px solid var(--brand-border); padding:10px 12px; background:#fff; outline:none; }
+input:focus,select:focus,textarea:focus{ box-shadow:var(--ring); border-color:var(--brand-primary-200); }
+button.btn{ background:var(--brand-primary); color:#fff; border:1px solid var(--brand-primary); border-radius:10px; padding:8px 14px; font-weight:700; }
+button.btn:hover{ background:var(--brand-primary-600); }
+button.border{ background:#fff; color:#1b2b47; border:1px solid var(--brand-border); border-radius:10px; padding:8px 14px; font-weight:700; }
+
+/* === Filter rows layout (Invoices & Payments) ===
+   Arrange exactly like your screenshots:
+   - Left cluster: selects/inputs + Apply/Reset
+   - Right cluster: Export buttons
+*/
+.filters{
+  display:grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr auto auto 1fr;
+  gap:12px;
+  align-items:center;
+  padding:12px;
   background:#fff;
-}
-input:focus, select:focus, textarea:focus{ box-shadow: var(--ring); border-color: var(--brand-primary-200); }
-
-/* Buttons in dialogs */
-button.btn{
-  background: var(--brand-primary);
-  color:#fff;
-  border:1px solid var(--brand-primary);
-  border-radius: 10px;
-  padding:8px 14px;
-  font-weight:700;
-}
-button.btn:hover{ background: var(--brand-primary-600); }
-button.border{
-  background:#fff; color:#1b2b47;
   border:1px solid var(--brand-border);
-  border-radius: 10px; padding:8px 14px; font-weight:700;
+  border-radius:14px;
 }
-
-/* Filter area small pills (Apply/Reset look) */
+.filters .left{ grid-column: 1 / 7; display:grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap:12px; align-items:center; }
+.filters .right{ grid-column: 7 / -1; display:flex; justify-content:flex-end; gap:10px; }
 .filters .pill.btn{ height:34px; padding:0 14px; }
 .filters .pill.secondary{ background:#9FA4AE; border-color:#9FA4AE; color:#fff; }
 
-/* Login card spacing */
-.login-card .pill{ height:40px; }
-.login-card .btn{ height:40px; }
-
-/* Ensure client statement back button matches screenshot */
-a.pill.border{ display:inline-flex; padding:10px 16px; }
+.actions-inline{ display:flex; gap:10px; align-items:center; }
+.login-card .pill, .login-card .btn{ height:40px; }
