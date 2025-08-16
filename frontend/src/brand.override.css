@@ -1,74 +1,76 @@
-/* === UI Override Tweaks (no logic changes) ===
-   - Keep existing look
-   - Ensure Export PDF has contrast
-   - Make Login/Register rounded rectangles (not fully pill)
-   - Small spacing and filter-row refinements
-*/
+/* === NEIL UI – Visual-only pack (keeps your logic intact) ==================
+   Scope: Styles for header, nav pills, filter bars, cards, tables and modals.
+   Notes:
+   - Login/Register are rounded-rects; the rest of nav remains pill-like.
+   - Export PDF button stays high-contrast red.
+   - Place your logo file at /public/neil-logo.png (or adjust .brand-logo).
+============================================================================= */
+
 :root{
   --brand-primary:#C2362D;
   --brand-primary-600:#A62F27;
-  --brand-primary-200:#F2D4D2;
-  --brand-accent:#6E6E6E;
-  --brand-bg:#F6F8FC;
-  --brand-card:#FFFFFF;
-  --brand-border:#E6E8EF;
-  --brand-text:#12151A;
+  --brand-primary-700:#8E2A23;
   --brand-muted:#6F7787;
+  --brand-text:#111827;
+  --brand-border:#E6E8EF;
+  --brand-card:#FFFFFF;
+  --brand-bg:#F6F8FC;
   --ring:0 0 0 4px rgba(194,54,45,.18);
 }
 
 html,body,#root{ background:var(--brand-bg); color:var(--brand-text); }
 
-/* Header + logo stays as before */
-.topbar{ position:sticky; top:0; z-index:40; display:flex; align-items:center; justify-content:space-between; padding:14px 20px; background:#fff; border-bottom:1px solid var(--brand-border); }
-.brand{ display:flex; align-items:center; gap:10px; font-weight:700; }
-.brand-logo{ width:64px; height:28px; display:inline-block; background-image:url('/neil-logo.png'); background-size:contain; background-repeat:no-repeat; background-position:left center; }
-.brand-text{ font-weight:800; }
+/* Header with logo left */
+.topbar{ position:sticky; top:0; z-index:50; display:flex; gap:16px; align-items:center; justify-content:space-between;
+  padding:14px 22px; background:#fff; border-bottom:1px solid var(--brand-border); }
+.brand{ display:flex; align-items:center; gap:12px; font-weight:800; }
+.brand-logo{ width:62px; height:26px; background:url('/neil-logo.png') left center / contain no-repeat; }
+.brand-text{ font-weight:800; font-size:16px; letter-spacing:.2px; }
 
-.menu{ display:flex; gap:12px; }
-.auth-actions{ display:flex; gap:12px; }
+/* Nav pills (Dashboard/Clients/Invoices/Payments/Admin) */
+.nav{ display:flex; gap:12px; align-items:center; }
+.pill{ display:inline-flex; align-items:center; justify-content:center; height:36px; padding:0 16px;
+  background:#fff; border:1px solid #C9D0E0; border-radius:9999px; color:#2B3B52; font-weight:700; transition:all .12s; }
+.pill:hover{ filter:brightness(.98); }
+.pill.active{ background:#EEF2FF; border-color:#DAE2FF; box-shadow:var(--ring); }
+.pill.danger{ background:var(--brand-primary); border-color:var(--brand-primary); color:#fff; }
+.pill.danger:hover{ background:var(--brand-primary-600); }
+.pill.secondary{ background:#9FA4AE; border-color:#9FA4AE; color:#fff; }
 
-/* Default “pill” used across app */
-.pill{ display:inline-flex; align-items:center; justify-content:center; height:36px; padding:0 16px; border-radius:9999px; border:1px solid var(--brand-border); background:#F0F3FA; color:#304562; font-weight:700; transition:all .15s; }
-.pill:hover{ filter:brightness(.97); } .pill.active{ box-shadow:var(--ring); }
-.pill.btn{ background:#fff; border:1px solid #C9D0E0; } .pill.btn.active{ background:var(--brand-primary-200); border-color:var(--brand-primary-200); }
-.pill.border{ background:#F2F4F9; border:1px solid var(--brand-border); color:#2b3b52; }
-.pill.danger{ background:var(--brand-primary); color:#fff; border:1px solid var(--brand-primary); } .pill.danger:hover{ background:var(--brand-primary-600); }
-.pill.secondary{ background:#9FA4AE; color:#fff; border:1px solid #9FA4AE; }
+/* Auth buttons — rounded rectangles only for these two */
+.auth-actions .pill{ border-radius:12px; height:40px; }
+.auth-actions{ display:flex; gap:12px; align-items:center; }
 
-/* Login/Register as rounded rectangles (only these) */
-.auth-actions .pill,
-.login-card .pill,
-.login-card .btn{
-  border-radius:12px;   /* rounded rectangle */
-  height:40px;
-}
+/* Page shell */
+.page{ padding:18px 22px; }
+h1{ margin:10px 0 16px 0; font-size:30px; line-height:1.15; }
 
-/* Filter rows layout — left cluster (filters) / right cluster (exports) */
+/* Cards & tables */
+.card{ background:var(--brand-card); border:1px solid var(--brand-border); border-radius:16px; padding:14px;
+  box-shadow:0 6px 28px rgba(12,23,54,.04); }
+.table{ width:100%; border-collapse:collapse; }
+.table th,.table td{ padding:12px 10px; border-bottom:1px solid var(--brand-border); text-align:left; }
+.table thead th{ font-size:12.5px; color:var(--brand-muted); font-weight:800; background:#FBFCFE; }
+
+/* Filter bars: left cluster (filters + Add), right cluster (exports) */
 .filters{
-  display:grid;
-  grid-template-columns: 1fr auto;
-  gap:12px;
-  align-items:center;
-  padding:12px;
-  background:#fff;
-  border:1px solid var(--brand-border);
-  border-radius:14px;
+  display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:center;
+  background:#fff; border:1px solid var(--brand-border); border-radius:16px; padding:12px; margin-bottom:14px;
 }
-.filters .left{ display:grid; grid-template-columns: 160px 160px 1fr auto auto; gap:12px; align-items:center; }
+.filters .left{
+  display:grid; gap:12px; align-items:center;
+  grid-template-columns: 160px 160px 1fr auto auto auto; /* status, client, search, overdue, apply, reset, add */
+}
 .filters .right{ display:flex; justify-content:flex-end; gap:10px; }
-
-/* Export buttons — ensure PDF contrasts */
+.filters input[type="text"], .filters input[type="search"], .filters select { height:36px; border-radius:12px; border:1px solid var(--brand-border); padding:0 10px; }
 .filters .right .export-pdf{ background:var(--brand-primary); color:#fff; border:1px solid var(--brand-primary); }
 .filters .right .export-csv{ background:#E9EDF7; border:1px solid #D8E0F3; }
 
-.page{ padding:18px 20px; }
-.card{ background:var(--brand-card); border:1px solid var(--brand-border); border-radius:14px; padding:14px; box-shadow:0 4px 18px rgba(20,35,80,.04); }
-.table{ width:100%; border-collapse:collapse; }
-.table th,.table td{ padding:12px 10px; border-bottom:1px solid var(--brand-border); text-align:left; }
-.table thead th{ font-size:12.5px; color:var(--brand-muted); font-weight:700; background:#FBFCFE; }
+/* Badges */
+.badge{ display:inline-flex; align-items:center; height:26px; padding:0 10px; border-radius:9999px;
+  font-size:12px; font-weight:700; background:#F1F5FF; border:1px solid #E1E7FB; color:#364B72; }
 
-/* Modal basics used by Add Invoice dialog */
+/* Modal (Add invoice, Add client, etc) */
 .modal-backdrop{ position:fixed; inset:0; background:rgba(11,17,29,.38); display:flex; align-items:center; justify-content:center; z-index:60; }
 .modal{ width:min(720px, 94vw); background:#fff; border:1px solid var(--brand-border); border-radius:16px; box-shadow:0 30px 90px rgba(12,23,54,.35); }
 .modal .hd{ padding:16px 18px; border-bottom:1px solid var(--brand-border); font-weight:800; font-size:18px; }
@@ -76,3 +78,7 @@ html,body,#root{ background:var(--brand-bg); color:var(--brand-text); }
 .modal .ft{ padding:14px 18px; border-top:1px solid var(--brand-border); display:flex; justify-content:flex-end; gap:10px; }
 .modal input, .modal select, .modal textarea{ width:100%; border-radius:10px; border:1px solid var(--brand-border); padding:10px 12px; }
 .modal .row{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+
+/* Login card */
+.login-card{ width:min(520px, 92vw); margin:48px auto 0; }
+.login-card .pill{ border-radius:12px; }
