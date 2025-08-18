@@ -9,7 +9,6 @@ import InvoiceDetails from './pages/InvoiceDetails.jsx';
 import Payments from './pages/Payments.jsx';
 import Admin from './pages/Admin.jsx';
 import Login from './pages/Login.jsx';
-import Register from './pages/Register.jsx';
 
 // NEW: client statement (detail) page
 import ClientStatement from './pages/ClientStatement.jsx';
@@ -95,7 +94,10 @@ export default function App(){
               <NavLink to="/clients" className={pillBtn}>Clients</NavLink>
               <NavLink to="/invoices" className={pillBtn}>Invoices</NavLink>
               <NavLink to="/payments" className={pillBtn}>Payments</NavLink>
+              {user?.role === 'superadmin' && (
               <NavLink to="/admin" className={pillBtn}>Admin</NavLink>
+            )}
+
             </>
           )}
         </nav>
@@ -104,7 +106,6 @@ export default function App(){
           {!hasToken ? (
             <div className="auth-actions">
               <NavLink to="/login" className={pill}>Login</NavLink>
-              <NavLink to="/register" className={pill}>Register</NavLink>
             </div>
           ) : (
             <button className="pill btn danger" onClick={logout}>Logout</button>
@@ -116,7 +117,6 @@ export default function App(){
         <Routes>
           {/* Public routes only */}
           <Route path="/login" element={hasToken ? <Navigate to="/" replace /> : <Login />} />
-          <Route path="/register" element={hasToken ? <Navigate to="/" replace /> : <Register />} />
 
           {/* Private routes */}
           <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
@@ -127,7 +127,15 @@ export default function App(){
           <Route path="/invoices" element={<RequireAuth><Invoices /></RequireAuth>} />
           <Route path="/invoices/:id" element={<RequireAuth><InvoiceDetails /></RequireAuth>} />
           <Route path="/payments" element={<RequireAuth><Payments /></RequireAuth>} />
-          <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
+          <Route
+            path="/admin"
+            element={
+              <RequireAuth>
+                {user?.role === 'superadmin' ? <Admin /> : <Navigate to="/" replace />}
+              </RequireAuth>
+  }
+/>
+
 
           <Route path="*" element={<Navigate to={hasToken ? '/' : '/login'} replace />} />
         </Routes>

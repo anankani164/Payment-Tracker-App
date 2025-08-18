@@ -152,6 +152,23 @@ function initSchema(db){
   if (!base) run(db, `INSERT OR REPLACE INTO settings(key,value) VALUES('base_currency','GHS')`);
 }
 initSchema(db);
+// --- Seed built-in superadmin if none exists ---
+(() => {
+  try {
+    const hasSuper = Number(scalar(db, `SELECT COUNT(*) AS c FROM users WHERE role='superadmin'`)) || 0;
+    if (!hasSuper) {
+      const hash = bcrypt.hashSync('Gianchand1', 10);
+      // We store "superadmin" in both name and email so existing login forms work.
+      run(db, `INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)`,
+        ['superadmin', 'superadmin', hash, 'superadmin']);
+      saveDB(db);
+      console.log('[seed] superadmin user created (username/email: "superadmin")');
+    }
+  } catch (e) {
+    console.error('[seed] failed to ensure superadmin:', e?.message || e);
+  }
+})();
+
 
 // Settings helpers
 function getBaseCurrency(){ return scalar(db, `SELECT value FROM settings WHERE key='base_currency'`) || 'GHS'; }
@@ -167,24 +184,11 @@ app.get('/api/auth/me', auth, (req,res)=>{
 });
 
 // ---------- Auth ----------
-app.post('/api/auth/register', (req,res)=>{
-  const { name, email, password, role } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: 'email and password required' });
-  const firstUser = countSuperAdmins() === 0 && (Number(scalar(db, `SELECT COUNT(*) as c FROM users`)) === 0);
-  const userRole = firstUser ? 'superadmin' : (role || 'staff');
-  const hash = bcrypt.hashSync(password, 10);
-  try{
-    run(db, `INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)`, [name||'', email, hash, userRole]);
-    saveDB(db);
-    res.json({ ok:true, role: userRole });
-  }catch{
-    res.status(400).json({ error: 'email already exists' });
-  }
-});
+
 
 app.post('/api/auth/login', (req,res)=>{
-  const { email, password } = req.body || {};
-  const row = getOne(db, `SELECT * FROM users WHERE email=?`, [email]);
+  const { email, password } = req.body || {}; const identifier = String(email || '').trim();
+  const row = getOne(db, `SELECT * FROM users WHERE email=? OR name=?`, [identifier, identifier]);
   if (!row) return res.status(401).json({ error:'invalid credentials' });
   const ok = bcrypt.compareSync(password, row.password_hash||'');
   if (!ok) return res.status(401).json({ error:'invalid credentials' });
