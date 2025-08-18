@@ -38,12 +38,11 @@ export default function Login(){
       </div>
       {error && <div className="muted" style={{color:'#b91c1c', marginBottom:10}}>Error: {error}</div>}
       <form onSubmit={submit} style={{display:'grid', gap:10}}>
-        <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required />
+        <input type="text" placeholder="Email or username" value={email} onChange={e=>setEmail(e.target.value)} required />
         <input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required />
         <div className="auth-actions">
           <button className="btn" disabled={loading}>{loading?'Signing in…':'Login'}</button>
-          <Link className="btn secondary" to="/register">Register</Link>
-        </div>
+          </div>
       </form>
     </div>
   );
