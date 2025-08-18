@@ -7,7 +7,6 @@ export default function Navbar() {
       <li><NavLink to="/clients" className="px-3 py-2 rounded-full">Clients</NavLink></li>
       <li><NavLink to="/invoices" className="px-3 py-2 rounded-full">Invoices</NavLink></li>
       <li><NavLink to="/payments" className="px-3 py-2 rounded-full">Payments</NavLink></li>
-      <li><NavLink to="/admin" className="px-3 py-2 rounded-full">Admin</NavLink></li>
     </ul>
   );
 }
