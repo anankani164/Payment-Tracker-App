@@ -3,6 +3,9 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
 
+import { exportCSV, exportPDF } from '../utils/export';
+
+
 function fmtNumber(n){
   const v = Number(n || 0);
   if (!isFinite(v)) return '0';
@@ -57,6 +60,29 @@ export default function ClientStatement(){
     });
   }, [entries]);
 
+  function onExportClientPDF() {
+  // Export exactly what the table shows: Date, Type, Description, Amount, Running, Invoice
+  const headers = ['Date','Type','Description','Amount','Running','Invoice'];
+
+  const rows = (running || []).map(e => ({
+    'Date': e.date ? new Date(e.date).toLocaleDateString() : '',
+    'Type': e.type || '',
+    'Description': e.description || '',
+    'Amount': Number(e.amount || 0),
+    'Running': Number(e._running || 0),
+    'Invoice': e.invoice_id ? `#${e.invoice_id}` : ''
+  }));
+
+  const filename = `client-${(client?.name || theId || 'statement')}.pdf`;
+
+  // Uses your existing export helper and formats money columns
+  exportPDF(filename, headers, rows, {
+    orientation: 'landscape',
+    money: ['Amount','Running']
+  });
+}
+
+
   if (!theId) return <div className="page"><div className="muted">No client selected.</div></div>;
   if (loading) return <div className="page"><div className="muted">Loading statement…</div></div>;
   if (err) return <div className="page"><div className="error">{err}</div></div>;
@@ -71,6 +97,8 @@ export default function ClientStatement(){
         </div>
         <div>
           <Link to={`/clients`} className="btn">Back to Clients</Link>
+          <button className="pill export-pdf" onClick={onExportClientPDF}>Export PDF</button>
+
         </div>
       </div>
 
