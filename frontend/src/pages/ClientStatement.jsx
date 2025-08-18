@@ -82,6 +82,24 @@ export default function ClientStatement(){
   });
 }
 
+  function onExportClientCSV() {
+  // Same columns as your table/PDF
+  const headers = ['Date','Type','Description','Amount','Running','Invoice'];
+
+  const rows = (running || []).map(e => ({
+    'Date': e.date ? new Date(e.date).toLocaleDateString() : '',
+    'Type': e.type || '',
+    'Description': e.description || '',
+    'Amount': Number(e.amount || 0),
+    'Running': Number(e._running || 0),
+    'Invoice': e.invoice_id ? `#${e.invoice_id}` : ''
+  }));
+
+  const filename = `client-${(client?.name || theId || 'statement')}.csv`;
+  exportCSV(filename, headers, rows);
+}
+
+
 
   if (!theId) return <div className="page"><div className="muted">No client selected.</div></div>;
   if (loading) return <div className="page"><div className="muted">Loading statement…</div></div>;
@@ -97,6 +115,7 @@ export default function ClientStatement(){
         </div>
         <div>
           <Link to={`/clients`} className="btn">Back to Clients</Link>
+          <button className="pill export-csv" onClick={onExportClientCSV}>Export CSV</button>
           <button className="pill export-pdf" onClick={onExportClientPDF}>Export PDF</button>
 
         </div>
